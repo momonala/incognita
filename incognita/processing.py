@@ -2,7 +2,7 @@ import json
 import logging
 import sqlite3
 from glob import glob
-from typing import Union, Dict
+from typing import Union, Dict, List
 
 import geopandas
 import numpy as np
@@ -26,9 +26,11 @@ def write_gdf_to_db(gdf: geopandas.GeoDataFrame):
     logger.info("Wrote table overland in geoData.db")
 
 
-def _read_geojson_file(filename: str) -> Dict[Dict, str]:
+def _read_geojson_file(filename: str) -> List[Dict]:
+    """Return raw geojson entries as list of JSONs, plus source file name. """
     with open(filename) as f:
-        return json.loads(f.read())["locations"]
+        raw_geojson = json.loads(f.read())["locations"]
+        return [{**d, **{"src_file": filename}} for d in raw_geojson]
 
 
 def get_raw_gdf() -> pd.DataFrame:
@@ -46,6 +48,7 @@ def get_raw_gdf() -> pd.DataFrame:
                 "timestamp": d["properties"]["timestamp"],
                 "speed": d["properties"].get("speed"),
                 "altitude": d["properties"].get("altitude"),
+                "src_file": d["src_file"],
             }
         )
     gdf = pd.DataFrame(parsed)
@@ -72,9 +75,9 @@ def get_processed_gdf(
     gdf: Union[geopandas.GeoDataFrame, pd.DataFrame]
 ) -> Union[geopandas.GeoDataFrame, pd.DataFrame]:
     """Adds custom speed calc (dist/time) and reassigns index."""
-    gdf["time_diff"] = pd.to_datetime(gdf.timestamp).diff(1).apply(lambda x: x.seconds)
+    gdf["time_diff"] = pd.to_datetime(gdf["timestamp"]).diff(1).apply(lambda x: x.seconds)
     gdf['meters'] = get_haversine_dist(
-        gdf.lat.shift(1), gdf.lon.shift(1), gdf.loc[1:, 'lat'], gdf.loc[1:, 'lon']
+        gdf["lat"].shift(1), gdf["lon"].shift(1), gdf.loc[1:, 'lat'], gdf.loc[1:, 'lon']
     )
     gdf['speed_calc'] = gdf['meters'] / gdf['time_diff']
     gdf["index"] = gdf.index
@@ -92,7 +95,7 @@ def split_into_trips(gdf: geopandas.GeoDataFrame, max_dist_meters: int = 400) ->
     """
     min_points = 5  # LineString must have at least two points
     # indicies from gdf to split trips apart on
-    indices_split_trips = list(gdf[gdf.meters > max_dist_meters].index)
+    indices_split_trips = list(gdf[gdf["meters"] > max_dist_meters].index)
     trips = []
     for i, stop_idx in enumerate(indices_split_trips + [gdf.index[-1]]):
         # get range of values within one trip

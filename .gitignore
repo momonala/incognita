@@ -1,6 +1,7 @@
 /cache
 /raw_data
 /tmp
+*.db
 
 # OS generated
 .DS_Store
