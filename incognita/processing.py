@@ -1,6 +1,5 @@
 import json
 import logging
-import sqlite3
 from glob import glob
 from typing import Union, Dict, List
 
@@ -11,19 +10,6 @@ from shapely.geometry import LineString
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-def get_processed_gdf_from_db() -> pd.DataFrame:
-    """Returned the cached geojson/location dataframe."""
-    conn = sqlite3.connect('geoData.db')
-    return pd.read_sql('select * from overland', conn)
-
-
-def write_gdf_to_db(gdf: geopandas.GeoDataFrame):
-    """Write geojson/location dataframe to SQLite db."""
-    conn = sqlite3.connect('geoData.db')
-    gdf.to_sql('overland', conn, if_exists='replace', index=False)
-    logger.info("Wrote table overland in geoData.db")
 
 
 def _read_geojson_file(filename: str) -> List[Dict]:
@@ -84,7 +70,9 @@ def get_processed_gdf(
     return gdf
 
 
-def split_into_trips(gdf: geopandas.GeoDataFrame, max_dist_meters: int = 400) -> geopandas.GeoDataFrame:
+def split_into_trips(
+    gdf: Union[geopandas.GeoDataFrame, pd.DataFrame], max_dist_meters: int = 400
+) -> geopandas.GeoDataFrame:
     """Group indvidual coordinates into "trips" of arbitrary length (LineStrings).
 
     Args:

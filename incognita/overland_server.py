@@ -1,18 +1,20 @@
 """Basic HTTP server to receive and store GPS raw_data from iPhone Overland app."""
 import logging
 import random
-import socket
 import string
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+from incognita.utils import get_ip_address
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
-PORT = 8383
+PORT = 8051
 
 
 class StoreHandler(BaseHTTPRequestHandler):
     """In overland the url will be http://yourservername_or_ip:8383/store"""
+
     def do_POST(self):
         """Recieve and store GPS GeoJSON raw_data from iPhone."""
         if self.path == "/store":
@@ -30,17 +32,7 @@ class StoreHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'{"result": "ok"}')
 
 
-def get_ip_address() -> str:
-    """Get the IP address of the current server."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 100))
-    socket_name = s.getsockname()
-    s.close()
-    return socket_name[0]
-
-
 if __name__ == "__main__":
     server = HTTPServer(("", PORT), StoreHandler)
-    ip_address = get_ip_address()
-    logger.info(f"Running server at http://{ip_address}:{PORT}/store")
+    logger.info(f"Running server at http://{get_ip_address()}:{PORT}/store")
     server.serve_forever()
