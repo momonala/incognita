@@ -5,18 +5,17 @@ import pandas as pd
 from dash import dcc
 from dash import html
 
-from incognita.processing import split_into_trips
-from incognita.database import get_processed_gdf_from_db, get_start_end_date
-from incognita.view import generate_folium
+from incognita.database import get_gdf_from_db, get_start_end_date
+from incognita.processing import split_into_trips, add_speed_to_gdf
 from incognita.utils import get_ip_address
+from incognita.view import generate_folium
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-PORT = 8050
+PORT = 8384
 
 app = dash.Dash(__name__, meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}])
-start_date, end_date = get_start_end_date
 
 
 @app.callback(
@@ -32,7 +31,7 @@ def generate_folium_map(start_date, end_date, checklist_values):
     start_date = pd.to_datetime(start_date, utc=True).replace(hour=0, minute=0)
     end_date = pd.to_datetime(end_date, utc=True).replace(hour=23, minute=59)
 
-    gdf = get_processed_gdf_from_db()
+    gdf = add_speed_to_gdf(get_gdf_from_db())
     gdf["timestamp"] = pd.to_datetime(gdf["timestamp"])
     gdf_filtered = gdf[(gdf["timestamp"] >= start_date) & (gdf["timestamp"] <= end_date)]
 
@@ -43,14 +42,15 @@ def generate_folium_map(start_date, end_date, checklist_values):
     return folium_map._repr_html_()
 
 
+start_date_base, end_date_base = get_start_end_date()
 app.layout = html.Div(
     [
         html.H1("Incognita"),
         dcc.DatePickerRange(
             id='date_range_picker',
             minimum_nights=0,
-            start_date=start_date,
-            end_date=end_date,
+            start_date=start_date_base,
+            end_date=end_date_base,
             display_format='DD.MM.YYYY',
         ),
         dcc.Checklist(
@@ -61,7 +61,7 @@ app.layout = html.Div(
         ),
         html.Iframe(
             id="folium_map",
-            srcDoc=generate_folium(split_into_trips(get_processed_gdf_from_db()))._repr_html_(),
+            srcDoc=generate_folium(split_into_trips(add_speed_to_gdf(get_gdf_from_db())))._repr_html_(),
             width="100%",
             height="1000",
         ),

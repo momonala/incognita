@@ -1,9 +1,14 @@
 Incognita
 
 ### To Do:
-- Run overland server on raspberry pi
-- Run app on raspberry pi
 - Create Celery app for periodic tasks
     - duplicate raw_data/ to backup drive
-    - update geoData.db with raw_data/
 - create SQL Alchemy classes?
+
+#### sync computer --> pi
+- rsync  -avu  raw_data/  pi@192.168.0.184:incognita/raw_data/
+- rsync  -avu  cache/  pi@192.168.0.184:incognita/cache/
+
+#### sync computer --> pi
+- rsync  -avu  raw_data/  pi@192.168.0.184:incognita/raw_data/
+- rsync  -avu  cache/  pi@192.168.0.184:incognita/cache/

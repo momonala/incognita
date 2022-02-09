@@ -5,16 +5,15 @@ import string
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+from incognita.database import update_db
 from incognita.utils import get_ip_address
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
-PORT = 8051
+PORT = 8383
 
 
 class StoreHandler(BaseHTTPRequestHandler):
-    """In overland the url will be http://yourservername_or_ip:8383/store"""
-
     def do_POST(self):
         """Recieve and store GPS GeoJSON raw_data from iPhone."""
         if self.path == "/store":
@@ -26,6 +25,8 @@ class StoreHandler(BaseHTTPRequestHandler):
             with open(file_name, "w") as fh:
                 fh.write(data.decode())
             logging.info(f"Wrote {file_name=}")
+
+            update_db(file_name)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
