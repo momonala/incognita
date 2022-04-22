@@ -6,6 +6,7 @@ from dash import dcc
 from dash import html
 
 from incognita.database import get_gdf_from_db, get_start_end_date
+from incognita.processing import get_stationary_groups, convert_pd_to_gpd
 from incognita.processing import split_into_trips, add_speed_to_gdf
 from incognita.utils import get_ip_address
 from incognita.view import generate_folium
@@ -31,17 +32,19 @@ def generate_folium_map(start_date, end_date, checklist_values):
     start_date = pd.to_datetime(start_date, utc=True).replace(hour=0, minute=0)
     end_date = pd.to_datetime(end_date, utc=True).replace(hour=23, minute=59)
 
-    gdf = add_speed_to_gdf(get_gdf_from_db())
+    gdf = add_speed_to_gdf(convert_pd_to_gpd(get_gdf_from_db()))
     gdf["timestamp"] = pd.to_datetime(gdf["timestamp"])
     gdf_filtered = gdf[(gdf["timestamp"] >= start_date) & (gdf["timestamp"] <= end_date)]
 
     trips = split_into_trips(gdf_filtered)
 
-    points = gdf_filtered if checklist_values else None
-    folium_map = generate_folium(trips, points)
+    stationary_points = get_stationary_groups(gdf)
+    all_points = gdf_filtered if checklist_values else None
+    folium_map = generate_folium(trips, stationary_points, all_points)
     return folium_map._repr_html_()
 
 
+gdf = add_speed_to_gdf(convert_pd_to_gpd(get_gdf_from_db()))
 start_date_base, end_date_base = get_start_end_date()
 app.layout = html.Div(
     [
@@ -61,7 +64,9 @@ app.layout = html.Div(
         ),
         html.Iframe(
             id="folium_map",
-            srcDoc=generate_folium(split_into_trips(add_speed_to_gdf(get_gdf_from_db())))._repr_html_(),
+            srcDoc=generate_folium(
+                trips=split_into_trips(gdf), stationary_points=get_stationary_groups(gdf)
+            )._repr_html_(),
             width="100%",
             height="1000",
         ),

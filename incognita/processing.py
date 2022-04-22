@@ -5,11 +5,15 @@ from typing import Union, Dict, List
 
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame
-from shapely.geometry import LineString
+from geopandas import GeoDataFrame, points_from_xy
+from shapely.geometry import LineString, Point
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def convert_pd_to_gpd(df: pd.DataFrame) -> GeoDataFrame:
+    return GeoDataFrame(df, geometry=points_from_xy(df.lon, df.lat))
 
 
 def read_geojson_file(filename: str) -> List[Dict]:
@@ -110,3 +114,30 @@ def split_into_trips(gdf: Union[GeoDataFrame, pd.DataFrame], max_dist_meters: in
 
     trips = GeoDataFrame(pd.concat(trips))
     return trips
+
+
+def get_stationary_groups(
+    gdf: Union[GeoDataFrame, pd.DataFrame], max_time_diff: int = 30, max_dist_meters: int = 10
+) -> GeoDataFrame:
+    is_stationary = (
+        (gdf["time_diff"] > max_time_diff) & (gdf["meters"] < max_dist_meters) & (gdf["meters"] != 0)
+    )
+    gdf["is_stationary"] = np.where(is_stationary, 1, 0)
+
+    stationary_groups = (
+        gdf.groupby(["is_stationary", gdf["is_stationary"].ne(gdf["is_stationary"].shift()).cumsum()])
+        .agg(list)
+        .reset_index(level=1, drop=True)
+    )
+
+    stationary_groups = stationary_groups[stationary_groups.index == 1]
+    stationary_groups = stationary_groups[stationary_groups.lon.apply(len) > 1]
+    stationary_groups["altitude"] = stationary_groups["altitude"].apply(lambda x: np.mean(np.array(x)))
+    stationary_groups["start"] = stationary_groups["timestamp"].apply(min)
+    stationary_groups["end"] = stationary_groups["timestamp"].apply(max)
+    stationary_groups["num_points"] = stationary_groups["lat"].apply(len)
+    stationary_groups["lat"] = stationary_groups["lat"].apply(np.mean)
+    stationary_groups["lon"] = stationary_groups["lon"].apply(np.mean)
+    stationary_groups["geometry"] = stationary_groups.apply(lambda x: Point(x.lon, x.lat), axis=1)
+
+    return stationary_groups
