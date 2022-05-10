@@ -24,7 +24,7 @@ def read_geojson_file(filename: str) -> List[Dict]:
 
 
 def extract_properties_from_geojson(geo_data: List[Dict]) -> List[Dict[str, Union[str, int]]]:
-    """Parse out the relevant contents from a raw geojson file."""
+    """Parse out the relevant contents fem a raw geojson file."""
     return [
         {
             "lon": d["geometry"]["coordinates"][0],

@@ -13,8 +13,8 @@
 - `rsync  -avu  cache/     pi@192.168.0.184:incognita/cache/`
 
 #### sync pi --> computer
-- `rsync  -avu  rsync  -avu pi@192.168.0.184:incognita/raw_data/ raw_data/`
-- `rsync  -avu  rsync  -avu pi@192.168.0.184:incognita/cache/    cache/`
+- `rsync  -avu pi@192.168.0.184:incognita/raw_data/ raw_data/`
+- `rsync  -avu pi@192.168.0.184:incognita/cache/    cache/`
 
 ### Raspberry Pi setup:
 

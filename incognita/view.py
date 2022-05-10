@@ -1,6 +1,8 @@
 import folium
 import geopandas
 
+from incognita.data_models import GeoCoords, GeoBoundingBox
+
 
 def generate_folium(
     trips: geopandas.GeoDataFrame,
@@ -21,4 +23,8 @@ def generate_folium(
         base_map = stationary_points.explore(m=base_map, marker_kwds={"size": 3}, color="purple")
     if gdf_points is not None:
         base_map = gdf_points.explore(m=base_map, marker_kwds={"size": 1})  # add points to map
+
+    # center on Berlin
+    bbox = GeoBoundingBox(center=GeoCoords(52.511626, 13.395842), width=0.065)
+    base_map.fit_bounds([bbox.sw.as_tuple(), bbox.ne.as_tuple()])
     return base_map
