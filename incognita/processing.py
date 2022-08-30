@@ -1,6 +1,5 @@
 import json
 import logging
-from glob import glob
 from typing import Union, Dict, List
 
 import numpy as np
@@ -24,7 +23,7 @@ def read_geojson_file(filename: str) -> List[Dict]:
 
 
 def extract_properties_from_geojson(geo_data: List[Dict]) -> List[Dict[str, Union[str, int]]]:
-    """Parse out the relevant contents fem a raw geojson file."""
+    """Parse out the relevant content from a raw geojson file."""
     return [
         {
             "lon": d["geometry"]["coordinates"][0],
@@ -38,22 +37,8 @@ def extract_properties_from_geojson(geo_data: List[Dict]) -> List[Dict[str, Unio
     ]
 
 
-def get_raw_gdf() -> pd.DataFrame:
-    """Dump ALL raw json files in /raw_data into a GeoDataFrame. Only keep relevant keys."""
-    geojson_files = glob("raw_data/*.geojson")
-    data_json = sum(
-        [extract_properties_from_geojson(read_geojson_file(f)) for f in geojson_files], []
-    )  # flatten
-    parsed = sorted(data_json, key=lambda x: x["timestamp"])
-    raw_geojson_df = pd.DataFrame(parsed)
-    # gdf = GeoDataFrame(df, geometry=points_from_xy(df.lon, df.lat))  # if we want a GeoDataFrame instead
-    logger.info(f"{len(geojson_files)} files found")
-    logger.info(f"created: {raw_geojson_df.shape=}")
-    return raw_geojson_df
-
-
 def get_haversine_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Get true distance between to coordiantes."""
+    """Get true distance between two coordiantes (accounts for curvature of earth)."""
     radius_earth = 6378137  # Radius of earth in m
     delta_lat = lat2 * np.pi / 180 - lat1 * np.pi / 180
     delta_lon = lon2 * np.pi / 180 - lon1 * np.pi / 180
@@ -73,7 +58,9 @@ def add_speed_to_gdf(gdf: Union[GeoDataFrame, pd.DataFrame]) -> Union[GeoDataFra
     Returns:
         dataframe with additional calculated columns
     """
-    gdf["time_diff"] = pd.to_datetime(gdf["timestamp"]).diff(1).apply(lambda x: x.seconds)
+    gdf["time_diff"] = pd.to_datetime(gdf["timestamp"])
+    diff = gdf["time_diff"].diff(1)
+    gdf["time_diff"] = diff.view(int) / 10 ** 9  # convert to seconds
     gdf['meters'] = get_haversine_dist(
         gdf["lat"].shift(1), gdf["lon"].shift(1), gdf.loc[1:, 'lat'], gdf.loc[1:, 'lon']
     )
@@ -88,10 +75,13 @@ def split_into_trips(gdf: Union[GeoDataFrame, pd.DataFrame], max_dist_meters: in
     Args:
         gdf: must have columns [lon, lat]
         max_dist_meters: maximum distance between two points to consider them part of the same trip
+            a value of 400 will show most data (including flight paths)
+            a value of 100 will not show flight paths
     Returns:
-        GeoDataFrame with column trips of dtype Linestring, where each row is a single "trip"
+        GeoDataFrame with column geometry of dtype LineString, where each row is a single "trip",
+            as well as aggregations for that trip
     """
-    min_points = 5  # LineString must have at least two points
+    min_points = 5  # LineString must have at least a few points
     # indicies from gdf to split trips apart on
     indices_split_trips = list(gdf[gdf["meters"] > max_dist_meters].index)
     trips = []
@@ -103,13 +93,23 @@ def split_into_trips(gdf: Union[GeoDataFrame, pd.DataFrame], max_dist_meters: in
         # ensure they meet the logical conditions of a trip
         if trip_df.shape[0] <= min_points:
             continue
-        trip_df = trip_df[trip_df.meters < max_dist_meters]  # remove far away points
+        trip_df = trip_df[trip_df["meters"] < max_dist_meters]  # remove far away points
         if trip_df.empty:
             continue
 
-        # add to dataframe
+        # add to dataframe with aggregations
         line_string = LineString(trip_df[["lon", "lat"]].values)
-        linestring_gdf = GeoDataFrame([line_string], columns=["geometry"])
+        start = str(np.min(trip_df["timestamp"]))
+        stop = str(np.max(trip_df["timestamp"]))
+        duration_minutes = np.sum(trip_df["time_diff"]) / 60
+        num_points = len(trip_df["timestamp"])
+        avg_speed = np.mean(trip_df["speed_calc"])
+        max_speed = np.max(trip_df["speed_calc"])
+        min_speed = np.min(trip_df["speed_calc"])
+
+        data = [[line_string, start, stop, duration_minutes, num_points, avg_speed, max_speed, min_speed]]
+        columns = ["geometry", "start", "stop", "minutes", "n_points", "avg_m/s", "max_m/s", "min_m/s"]
+        linestring_gdf = GeoDataFrame(data, columns)
         trips.append(linestring_gdf)
 
     trips = GeoDataFrame(pd.concat(trips))
@@ -119,6 +119,10 @@ def split_into_trips(gdf: Union[GeoDataFrame, pd.DataFrame], max_dist_meters: in
 def get_stationary_groups(
     gdf: Union[GeoDataFrame, pd.DataFrame], max_time_diff: int = 30, max_dist_meters: int = 10
 ) -> GeoDataFrame:
+    """Returns a GeoDataFrame where each row is a group of stationary points. Stationary is defined as
+    points which stay within the `max_dist_meters` distance and within `max_time_diff` time. Applies
+    aggregations to all relevant parent columns.
+    """
     is_stationary = (
         (gdf["time_diff"] > max_time_diff) & (gdf["meters"] < max_dist_meters) & (gdf["meters"] != 0)
     )
@@ -132,12 +136,14 @@ def get_stationary_groups(
 
     stationary_groups = stationary_groups[stationary_groups.index == 1]
     stationary_groups = stationary_groups[stationary_groups.lon.apply(len) > 1]
-    stationary_groups["altitude"] = stationary_groups["altitude"].apply(lambda x: np.mean(np.array(x)))
-    stationary_groups["start"] = stationary_groups["timestamp"].apply(min)
-    stationary_groups["end"] = stationary_groups["timestamp"].apply(max)
+    stationary_groups["start"] = stationary_groups["timestamp"].apply(min).astype(str)
+    stationary_groups["end"] = stationary_groups["timestamp"].apply(max).astype(str)
     stationary_groups["num_points"] = stationary_groups["lat"].apply(len)
     stationary_groups["lat"] = stationary_groups["lat"].apply(np.mean)
     stationary_groups["lon"] = stationary_groups["lon"].apply(np.mean)
     stationary_groups["geometry"] = stationary_groups.apply(lambda x: Point(x.lon, x.lat), axis=1)
+    if "altitude" in stationary_groups.columns:
+        stationary_groups["altitude"] = stationary_groups["altitude"].apply(lambda x: np.mean(np.array(x)))
+    stationary_groups.drop("timestamp", inplace=True, axis=1)
 
-    return stationary_groups
+    return GeoDataFrame(stationary_groups)

@@ -1,12 +1,14 @@
 import logging
+from functools import lru_cache
 
 import dash
 import pandas as pd
 from dash import dcc
 from dash import html
+from joblib import Memory
 
 from incognita.database import get_gdf_from_db, get_start_end_date
-from incognita.processing import get_stationary_groups, convert_pd_to_gpd
+from incognita.processing import get_stationary_groups
 from incognita.processing import split_into_trips, add_speed_to_gdf
 from incognita.utils import get_ip_address
 from incognita.view import generate_folium
@@ -17,6 +19,12 @@ logger = logging.getLogger(__name__)
 PORT = 8384
 
 app = dash.Dash(__name__, meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}])
+disk_memory = Memory("joblib_cache")
+
+
+@lru_cache()
+def get_raw_gdf_with_speed():
+    return add_speed_to_gdf(get_gdf_from_db())
 
 
 @app.callback(
@@ -27,25 +35,36 @@ app = dash.Dash(__name__, meta_tags=[{"name": "viewport", "content": "width=devi
         dash.dependencies.Input('checklist', 'value'),
     ],
 )
-def generate_folium_map(start_date, end_date, checklist_values):
+def _generate_folium_map(start_date, end_date, show_flights):
     """Filter GDF based on timestamps provided. Returns HTML repr of Folium map for browser rendering."""
+    folium_map_html = get_folium_map_html(start_date, end_date, bool(show_flights))
+    return folium_map_html
+
+
+@disk_memory.cache
+def get_folium_map_html(start_date: str, end_date: str, show_flights: bool) -> str:
     start_date = pd.to_datetime(start_date, utc=True).replace(hour=0, minute=0)
     end_date = pd.to_datetime(end_date, utc=True).replace(hour=23, minute=59)
 
-    gdf = add_speed_to_gdf(convert_pd_to_gpd(get_gdf_from_db()))
+    gdf = get_raw_gdf_with_speed()
+    logger.info(f"{gdf.shape=}")
+    logger.info(gdf.tail(1))
+
     gdf["timestamp"] = pd.to_datetime(gdf["timestamp"])
     gdf_filtered = gdf[(gdf["timestamp"] >= start_date) & (gdf["timestamp"] <= end_date)]
 
-    trips = split_into_trips(gdf_filtered)
+    max_dist = 100 if not show_flights else 400
+    trips = split_into_trips(gdf_filtered, max_dist)
+    stationary_points = get_stationary_groups(gdf_filtered)
 
-    stationary_points = get_stationary_groups(gdf)
-    all_points = gdf_filtered if checklist_values else None
-    folium_map = generate_folium(trips, stationary_points, all_points)
-    return folium_map._repr_html_()
+    folium_map_html = generate_folium(trips, stationary_points)._repr_html_()
+    logger.info("generated folium map")
+    return folium_map_html
 
 
-gdf = add_speed_to_gdf(convert_pd_to_gpd(get_gdf_from_db()))
-start_date_base, end_date_base = get_start_end_date()
+start_date_base, end_date_base = tuple(x.split("T")[0] for x in get_start_end_date())
+map_html = get_folium_map_html(start_date_base, end_date_base, False)
+
 app.layout = html.Div(
     [
         html.H1("Incognita"),
@@ -57,23 +76,16 @@ app.layout = html.Div(
             display_format='DD.MM.YYYY',
         ),
         dcc.Checklist(
-            options=[{'label': 'Show Points', 'value': 'True'}],
+            options=[{'label': 'Show Flights', 'value': 'False'}],
             value=[],
             labelStyle={'display': 'inline-block'},
             id="checklist",
         ),
-        html.Iframe(
-            id="folium_map",
-            srcDoc=generate_folium(
-                trips=split_into_trips(gdf), stationary_points=get_stationary_groups(gdf)
-            )._repr_html_(),
-            width="100%",
-            height="1000",
-        ),
+        html.Iframe(id="folium_map", srcDoc=map_html, width="100%", height="1000",),
     ],
 )
 
 
 if __name__ == '__main__':
     logger.info(f"Visit: http://{get_ip_address()}:{PORT}")
-    app.run_server(debug=True, port=PORT, host='0.0.0.0')
+    app.run_server(debug=False, port=PORT, host='0.0.0.0')
