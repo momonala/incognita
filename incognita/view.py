@@ -17,7 +17,7 @@ def generate_folium(
     returns:
          map object
     """
-    trips.crs = "EPSG:4326"  # set coordinate reference system for background map
+    trips.set_crs("EPSG:4326", inplace=True)  # set coordinate reference system for background map
     base_map = trips.explore(marker_kwds={"size": 0.5})
     if stationary_points is not None:
         base_map = stationary_points.explore(m=base_map, marker_kwds={"size": 3}, color="purple")

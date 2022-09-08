@@ -85,6 +85,7 @@ def split_into_trips(gdf: Union[GeoDataFrame, pd.DataFrame], max_dist_meters: in
     # indicies from gdf to split trips apart on
     indices_split_trips = list(gdf[gdf["meters"] > max_dist_meters].index)
     trips = []
+    columns = ["geometry", "start", "stop", "minutes", "n_points", "avg_m/s", "max_m/s", "min_m/s"]
     for i, stop_idx in enumerate(indices_split_trips + [gdf.index[-1]]):
         # get range of values within one trip
         start_idx = 0 if i == 0 else indices_split_trips[i - 1]
@@ -108,12 +109,11 @@ def split_into_trips(gdf: Union[GeoDataFrame, pd.DataFrame], max_dist_meters: in
         min_speed = np.min(trip_df["speed_calc"])
 
         data = [[line_string, start, stop, duration_minutes, num_points, avg_speed, max_speed, min_speed]]
-        columns = ["geometry", "start", "stop", "minutes", "n_points", "avg_m/s", "max_m/s", "min_m/s"]
-        linestring_gdf = GeoDataFrame(data, columns)
+        linestring_gdf = GeoDataFrame(data, columns=columns)
         trips.append(linestring_gdf)
 
-    trips = GeoDataFrame(pd.concat(trips))
-    return trips
+    trips_df = GeoDataFrame(pd.concat(trips))
+    return trips_df
 
 
 def get_stationary_groups(

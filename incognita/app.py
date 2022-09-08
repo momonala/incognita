@@ -2,6 +2,7 @@ import logging
 from functools import lru_cache
 
 import dash
+import dash_bootstrap_components as dbc
 import pandas as pd
 from dash import dcc
 from dash import html
@@ -18,7 +19,11 @@ logger = logging.getLogger(__name__)
 
 PORT = 8384
 
-app = dash.Dash(__name__, meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}])
+app = dash.Dash(
+    __name__,
+    external_stylesheets=[dbc.themes.YETI, 'https://codepen.io/chriddyp/pen/bWLwgP.css'],
+    meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
+)
 disk_memory = Memory("joblib_cache")
 
 
@@ -41,7 +46,7 @@ def _generate_folium_map(start_date, end_date, show_flights):
     return folium_map_html
 
 
-@disk_memory.cache
+# @disk_memory.cache
 def get_folium_map_html(start_date: str, end_date: str, show_flights: bool) -> str:
     start_date = pd.to_datetime(start_date, utc=True).replace(hour=0, minute=0)
     end_date = pd.to_datetime(end_date, utc=True).replace(hour=23, minute=59)
@@ -62,26 +67,32 @@ def get_folium_map_html(start_date: str, end_date: str, show_flights: bool) -> s
     return folium_map_html
 
 
-start_date_base, end_date_base = tuple(x.split("T")[0] for x in get_start_end_date())
+# start_date_base, end_date_base = tuple(x.split("T")[0] for x in get_start_end_date())
+start_date_base, end_date_base = '2022-09-01', '2022-09-05'
 map_html = get_folium_map_html(start_date_base, end_date_base, False)
 
 app.layout = html.Div(
     [
-        html.H1("Incognita"),
-        dcc.DatePickerRange(
-            id='date_range_picker',
-            minimum_nights=0,
-            start_date=start_date_base,
-            end_date=end_date_base,
-            display_format='DD.MM.YYYY',
+        html.Div(
+            [
+                html.H1("Incognita"),
+                dcc.DatePickerRange(
+                    id='date_range_picker',
+                    minimum_nights=0,
+                    start_date=start_date_base,
+                    end_date=end_date_base,
+                    display_format='DD.MM.YYYY',
+                ),
+                dcc.Checklist(
+                    options=[{'label': 'Show Flights', 'value': 'False'}],
+                    value=[],
+                    # labelStyle={'display': 'inline-block'},
+                    id="checklist",
+                ),
+            ],
+            style={"height": "50px", "margin-left": "10px"},
         ),
-        dcc.Checklist(
-            options=[{'label': 'Show Flights', 'value': 'False'}],
-            value=[],
-            labelStyle={'display': 'inline-block'},
-            id="checklist",
-        ),
-        html.Iframe(id="folium_map", srcDoc=map_html, width="100%", height="1000",),
+        html.Iframe(id="folium_map", srcDoc=map_html, width="100%", height="1000"),
     ],
 )
 
