@@ -3,6 +3,8 @@
 /tmp
 /prototyping
 *.db
+*.ipynb
+*.mp4
 
 # OS generated
 .DS_Store
