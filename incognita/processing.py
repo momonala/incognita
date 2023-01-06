@@ -16,7 +16,7 @@ def convert_pd_to_gpd(df: pd.DataFrame) -> GeoDataFrame:
 
 
 def read_geojson_file(filename: str) -> List[Dict]:
-    """Return raw geojson entries as list of JSONs, plus source file name. """
+    """Return raw geojson entries as list of JSONs, plus source file name."""
     with open(filename) as f:
         raw_geojson = json.loads(f.read())["locations"]
         return [{**d, **{"geojson_file": filename}} for d in raw_geojson]
@@ -123,6 +123,7 @@ def get_stationary_groups(
     points which stay within the `max_dist_meters` distance and within `max_time_diff` time. Applies
     aggregations to all relevant parent columns.
     """
+    gdf = gdf.copy()  # prevent False positive set with copy warning
     is_stationary = (
         (gdf["time_diff"] > max_time_diff) & (gdf["meters"] < max_dist_meters) & (gdf["meters"] != 0)
     )

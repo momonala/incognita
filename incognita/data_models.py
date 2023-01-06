@@ -15,8 +15,10 @@ class GeoBoundingBox(object):
     center: GeoCoords
     sw: GeoCoords
     ne: GeoCoords
+    name: str
 
-    def __init__(self, center: GeoCoords, width: float = 0.05):
+    def __init__(self, center: GeoCoords, width: float = 0.05, name=""):
         self.center = center
         self.sw = GeoCoords(center.lat + width, center.lon + width)
         self.ne = GeoCoords(center.lat - width, center.lon - width)
+        self.name = name
