@@ -12,3 +12,6 @@
 .ipynb_checkpoints/
 __pycache__/
 joblib_cache/
+
+# secrets
+incognita/secrets.py

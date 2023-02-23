@@ -1,23 +1,21 @@
 import logging
-from functools import lru_cache
 
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
-from dash import dcc
-from dash import html
+from dash import dcc, html
 from joblib import Memory
 
+from incognita.data_models import GeoBoundingBox
 from incognita.database import get_gdf_from_db, get_start_end_date
 from incognita.processing import get_stationary_groups
 from incognita.processing import split_into_trips, add_speed_to_gdf
-from incognita.utils import get_ip_address
-from incognita.view import generate_folium
+from incognita.utils import get_ip_address, coordinates_from_place_name, timed
+from incognita.view import get_map_deck
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-PORT = 8384
+logger.propagate = False  # don't send  logs to root handler (causes duplicates)
 
 app = dash.Dash(
     __name__,
@@ -26,10 +24,8 @@ app = dash.Dash(
 )
 disk_memory = Memory("joblib_cache")
 
-
-@lru_cache()
-def get_raw_gdf_with_speed():
-    return add_speed_to_gdf(get_gdf_from_db())
+PORT = 8384
+DEFAULT_LOCATION = "Berlin, De"
 
 
 @app.callback(
@@ -40,48 +36,54 @@ def get_raw_gdf_with_speed():
         dash.dependencies.Input('checklist', 'value'),
     ],
 )
-def _generate_folium_map(start_date, end_date, show_flights):
-    """Filter GDF based on timestamps provided. Returns HTML repr of Folium map for browser rendering."""
-    folium_map_html = get_folium_map_html(start_date, end_date, bool(show_flights))
-    return folium_map_html
+def generate_map_callback(start_date, end_date, show_flights):
+    """Filter df based on timestamps provided. Returns HTML repr of map for browser rendering."""
+    bbox = coordinates_from_place_name(DEFAULT_LOCATION)
+    return get_deck_map_html(start_date, end_date, bbox, bool(show_flights))
 
 
-# @disk_memory.cache
-def get_folium_map_html(start_date: str, end_date: str, show_flights: bool) -> str:
+@timed
+@disk_memory.cache
+def get_deck_map_html(start_date: str, end_date: str, bbox: GeoBoundingBox, show_flights: bool) -> str:
+    df, stationary_groups, trips_df = get_data_for_maps(start_date, end_date, show_flights)
+    deck = get_map_deck(bbox, trips_df, stationary_groups, df)
+    return deck.to_html(as_string=True)
+
+
+@timed
+def get_data_for_maps(start_date: str, end_date: str, show_flights: bool):
     start_date = pd.to_datetime(start_date, utc=True).replace(hour=0, minute=0)
     end_date = pd.to_datetime(end_date, utc=True).replace(hour=23, minute=59)
 
-    gdf = get_raw_gdf_with_speed()
+    gdf = add_speed_to_gdf(get_gdf_from_db())
     logger.info(f"{gdf.shape=}")
     logger.info(gdf.tail(1))
 
     gdf["timestamp"] = pd.to_datetime(gdf["timestamp"])
     gdf_filtered = gdf[(gdf["timestamp"] >= start_date) & (gdf["timestamp"] <= end_date)]
-
     max_dist = 100 if not show_flights else 400
     trips = split_into_trips(gdf_filtered, max_dist)
     stationary_points = get_stationary_groups(gdf_filtered)
-
-    folium_map_html = generate_folium(trips, stationary_points)._repr_html_()
-    logger.info("generated folium map")
-    return folium_map_html
+    return gdf_filtered, stationary_points, trips
 
 
-# start_date_base, end_date_base = tuple(x.split("T")[0] for x in get_start_end_date())
-start_date_base, end_date_base = '2022-09-01', '2022-09-05'
-map_html = get_folium_map_html(start_date_base, end_date_base, False)
+start_date_base, end_date_base = tuple(x.split("T")[0] for x in get_start_end_date())
+# end_date_base = "2021-11-30"  # small range for debugging
+default_location = coordinates_from_place_name(DEFAULT_LOCATION)
+map_html = get_deck_map_html(start_date_base, end_date_base, default_location, False)
 
 app.layout = html.Div(
     [
         html.Div(
             [
-                html.H1("Incognita"),
+                html.H1("Incognita", style={'display': 'inline-block', "width": "15%"}),
                 dcc.DatePickerRange(
                     id='date_range_picker',
                     minimum_nights=0,
                     start_date=start_date_base,
                     end_date=end_date_base,
                     display_format='DD.MM.YYYY',
+                    style={"width": "20%"},
                 ),
                 dcc.Checklist(
                     options=[{'label': 'Show Flights', 'value': 'False'}],
@@ -90,13 +92,15 @@ app.layout = html.Div(
                     id="checklist",
                 ),
             ],
-            style={"height": "50px", "margin-left": "10px"},
+            style={"height": "50px", "margin-left": "10px", "margin-bottom": "10px"},
         ),
-        html.Iframe(id="folium_map", srcDoc=map_html, width="100%", height="1000"),
+        html.Iframe(
+            id="folium_map", srcDoc=map_html, width="100%", height="1000", style={"margin-top": "5px"}
+        ),
     ],
 )
 
 
 if __name__ == '__main__':
     logger.info(f"Visit: http://{get_ip_address()}:{PORT}")
-    app.run_server(debug=False, port=PORT, host='0.0.0.0')
+    app.run_server(debug=True, port=PORT, host='0.0.0.0')
