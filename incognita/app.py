@@ -68,7 +68,8 @@ def get_data_for_maps(start_date: str, end_date: str, show_flights: bool):
 
 
 start_date_base, end_date_base = tuple(x.split("T")[0] for x in get_start_end_date())
-# end_date_base = "2021-11-30"  # small range for debugging
+# start_date_base = "2023-01-21"  # small range for debugging
+# end_date_base = "2023-01-29"
 default_location = coordinates_from_place_name(DEFAULT_LOCATION)
 map_html = get_deck_map_html(start_date_base, end_date_base, default_location, False)
 

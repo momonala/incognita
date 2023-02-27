@@ -57,8 +57,8 @@ def get_map_deck(
         "TripsLayer",
         pd.DataFrame(trips_df["geometry"]),  # use df split_into_trips
         get_path="geometry",
-        get_color=[255, 111, 0, 50],
-        width_min_pixels=2,
+        get_color=[255, 111, 0, 200],
+        width_min_pixels=3,
         rounded=True,
     )
     heatmap = pdk.Layer(
@@ -91,7 +91,7 @@ def get_map_deck(
         layers=[
             trips,
             stationary_points,
-            heatmap,
+            # heatmap,
         ],
         initial_view_state=view_state,
         api_keys={"mapbox": MAPBOX_API_KEY, "google_maps": GOOGLE_MAPS_API_KEY},

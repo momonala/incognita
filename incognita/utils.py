@@ -4,10 +4,13 @@ import time
 from functools import wraps
 
 from geopy import geocoders
+from joblib import Memory
 
 from incognita.data_models import GeoBoundingBox, GeoCoords
 
 logger = logging.getLogger(__name__)
+
+disk_memory = Memory("joblib_cache")
 
 
 def get_ip_address() -> str:
@@ -19,6 +22,7 @@ def get_ip_address() -> str:
     return socket_name[0]
 
 
+@disk_memory.cache
 def coordinates_from_place_name(city: str) -> GeoBoundingBox:
     coordinate_fetcher = geocoders.GeoNames("momonala")
     city_location = coordinate_fetcher.geocode(city)
