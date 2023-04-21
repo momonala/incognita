@@ -1,0 +1,131 @@
+Year,Month,Day,Origin,Destination,Type
+2023,October,15,Madrid,Berlin,connection
+2023,October,15,San Francisco,Madrid,connection
+2023,September,16,Madrid,San Francisco,connection
+2023,September,16,Berlin,Madrid,connection
+2023,April,11,London,Berlin,direct
+2023,April,5,Berlin,London,direct
+2023,March,12,Istanbul,Berlin,connection
+2023,March,12,Baghdad,Istanbul,connection
+2023,March,4,Istanbul,Baghdad,connection
+2023,March,4,Berlin,Istanbul,connection
+2023,February,4,Istanbul,Berlin,connection
+2023,February,4,Bahrain,Istanbul,connection
+2023,February,4,Bangalore,Bahrain,connection
+2023,January,29,Dubai,Bangalore,connection
+2023,January,29,Izmir,Dubai,connection
+2023,January,21,Berlin,Izmir,direct
+2022,December,28,London,Berlin,direct
+2022,December,21,Berlin,London,direct
+2022,December,9,Munich,Berlin,connection
+2022,December,9,San Francisco,Munich,connection
+2022,November,25,Munich,San Francisco,connection
+2022,November,25,Berlin,Munich,connection
+2022,October,23,Milan,Berlin,direct
+2022,October,15,Berlin,Marseille,direct
+2022,June,16,London,Berlin,direct
+2022,June,10,Berlin,London,direct
+2022,June,8,Copenhagen,Berlin,connection
+2022,June,8,San Francisco,Copenhagen,connection
+2022,May,14,Copenhagen,San Francisco,connection
+2022,May,14,Berlin,Copenhagen,connection
+2022,March,8,Paphos,Berlin,direct
+2022,March,1,Berlin,Paphos,direct
+2021,December,18,San Francisco,Copenhagen,connection
+2021,December,18,Copenhagen,Berlin,connection
+2021,December,4,Bangalore,Narita,connection
+2021,December,4,Narita,San Francisco,connection
+2021,November,30,Berlin,Rome,direct
+2021,November,22,Mumbai,Bangalore,direct
+2021,November,14,Berlin,Frankfurt,connection
+2021,November,14,Frankfurt,Mumbai,connection
+2021,September,12,Rome,Berlin,direct
+2021,August,28,Berlin,Rome,direct
+2021,June,30,Palermo,Berlin,direct
+2021,June,23,Berlin,Palermo,direct
+2020,March,16,Kiev,Berlin,direct
+2020,March,13,Berlin,Kiev,direct
+2019,December,28,San Francisco,London,connection
+2019,December,28,London,Berlin,connection
+2019,December,12,Berlin,London,connection
+2019,December,12,London,San Francisco,connection
+2019,November,3,Brussels,Berlin,direct
+2019,October,31,Berlin,Brussels,direct
+2019,September,22,London,Berlin,direct
+2019,September,19,Berlin,London,direct
+2019,July,21,Bilbao,Amsterdam,connection
+2019,July,21,Amsterdam,Berlin,connection
+2019,July,18,Barcelona,Bilbao,direct
+2019,July,16,Berlin,Barcelona,direct
+2019,June,12,Amsterdam,Berlin,connection
+2019,June,11,Ho Chi Minh City,Kuala Lumpur ,connection
+2019,June,11,Kuala Lumpur ,Amsterdam,connection
+2019,May,30,Berlin,Paris,connection
+2019,May,30,Paris,Kuala Lumpur ,connection
+2019,May,30,Kuala Lumpur ,Ho Chi Minh City,connection
+2019,April,28,Amsterdam,Berlin,direct
+2019,April,25,Berlin,Amsterdam,direct
+2019,March,25,Brussels,Berlin,connection
+2019,March,24,Accra,Brussels,connection
+2019,March,14,Berlin,Lisbon,connection
+2019,March,14,Lisbon,Accra,connection
+2019,January,1,San Francisco,Frankfurt,connection
+2019,January,1,Frankfurt,Berlin,connection
+2018,December,15,Berlin,Munich,connection
+2018,December,15,Munich,Toronto,connection
+2018,December,15,Toronto,San Francisco,connection
+2018,November,4,London,Berlin,connection
+2018,November,3,Berlin,London,connection
+2018,October,3,Berlin,Budapest,direct
+2018,May,13,Copenhagen,Berlin,connection
+2018,May,12,San Francisco,Copenhagen,connection
+2018,April,23,Amsterdam,Copenhagen,connection
+2018,April,23,Copenhagen,San Francisco,connection
+2018,March,4,Istanbul,Frankfurt,connection
+2018,March,4,Frankfurt,Amsterdam,connection
+2018,February,24,Frankfurt,Istanbul,connection
+2018,February,23,Amsterdam,Frankfurt,connection
+2018,January,5,Zagreb,Amsterdam,direct
+2017,December,25,Amsterdam,Zagreb,direct
+2017,August,26,Newark,Amsterdam,direct
+2017,August,21,San Francisco,Denver,connection
+2017,August,21,Denver,Raleigh,connection
+2016,September,16,Arusha,San Francisco,direct
+2016,September,11,Kigali,Arusha,direct
+2016,July,31,Copenhagen,Reykjavik,direct
+2016,August,31,Reykjavik,Copenhagen,direct
+2016,August,31,Amsterdam,Kigali,direct
+2016,June,15,Reykjavik,Paris,connection
+2016,June,14,San Francisco,Reykjavik,connection
+,,,Bozeman,Sacramento,
+,,,San Francisco,London,
+,,,London,Rome,
+,,,Greece,San Francisco,
+,,,San Francisco,Singapore,
+,,,Singapore,Bangkok,
+,,,Bangkok,Mumbai,
+,,,Mumbai ,Bangalore,
+,,,Bangalore,Seoul,
+,,,Seoul,San Francisco,
+,,,San Francisco,Lima,
+,,,Lima,Quito,
+,,,Quito,Lima,
+,,,Lima,San Francisco,
+,,,London,Bangalore,
+,,,Bangalore,Pittsburgh,
+,,,Pittsburgh,Sacramento,
+,,,Sacramento,Dallas,
+,,,Dallas,Raleigh,
+,,,New York City,Sacramento,
+,,,Sacramento,Oahu,
+,,,Oahu,Sacramento,
+,,,Sacramento,"Cancun, Mexico",
+,,,"Cancun, Mexico",Sacramento,
+,,,Sacramento,"Cancun, Mexico",
+,,,"Cancun, Mexico",Sacramento,
+,,,San Francisco,San Salvador,
+,,,San Salvador,"San Jose, Costa Rica",
+,,,"San Jose, Costa Rica",San Salvador,
+,,,San Salvador,San Francisco,
+,,,San Francisco,Lisbon,
+,,,Madrid,San Francisco,
