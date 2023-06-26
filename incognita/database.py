@@ -2,7 +2,6 @@ import json
 import logging
 import sqlite3
 from functools import lru_cache
-
 import pandas as pd
 from incognita.utils import timed
 
@@ -49,7 +48,7 @@ def read_geojson_file(filename: str) -> list[dict]:
         return [{**d, **{"geojson_file": filename}} for d in raw_geojson]
 
 
-def extract_properties_from_geojson(geo_data: list[dict]) -> list[dict[str, str | int]]:
+def extract_properties_from_geojson(geo_data: list[dict]) -> list[dict]:
     """Parse out the relevant content from a raw geojson file."""
     return [
         {

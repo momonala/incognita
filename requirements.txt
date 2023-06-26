@@ -7,3 +7,4 @@ joblib
 pycountry
 allcities
 pydeck
+geopy
