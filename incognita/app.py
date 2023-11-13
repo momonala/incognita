@@ -5,7 +5,7 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 from dash import dcc, html
 from joblib import Memory
-
+from datetime import datetime, timedelta
 from incognita.data_models import GeoBoundingBox
 from incognita.database import get_gdf_from_db, get_start_end_date
 from incognita.processing import get_stationary_groups
@@ -68,8 +68,11 @@ def get_data_for_maps(start_date: str, end_date: str, show_flights: bool):
 
 
 start_date_base, end_date_base = tuple(x.split("T")[0] for x in get_start_end_date())
-# start_date_base = "2023-01-21"  # small range for debugging
-# end_date_base = "2023-01-29"
+# start_date_base, end_date_base = "2023-09-15" ,  "2023-10-14" # small range for debugging
+date_fmt = '%Y-%m-%d'
+lookback = timedelta(days=21)
+start_date_base = (datetime.strptime(end_date_base, date_fmt) - lookback).strftime(date_fmt)  # noqa
+
 default_location = coordinates_from_place_name(DEFAULT_LOCATION)
 map_html = get_deck_map_html(start_date_base, end_date_base, default_location, False)
 
