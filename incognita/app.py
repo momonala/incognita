@@ -1,11 +1,12 @@
 import logging
+from datetime import datetime, timedelta
 
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
 from dash import dcc, html
 from joblib import Memory
-from datetime import datetime, timedelta
+
 from incognita.data_models import GeoBoundingBox
 from incognita.database import get_gdf_from_db, get_start_end_date
 from incognita.processing import get_stationary_groups

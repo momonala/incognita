@@ -50,14 +50,21 @@ def read_geojson_file(filename: str) -> list[dict]:
 
 def extract_properties_from_geojson(geo_data: list[dict]) -> list[dict]:
     """Parse out the relevant content from a raw geojson file."""
-    return [
-        {
-            "lon": d["geometry"]["coordinates"][0],
-            "lat": d["geometry"]["coordinates"][1],
-            "timestamp": d["properties"]["timestamp"],
-            "speed": d["properties"].get("speed"),
-            "altitude": d["properties"].get("altitude"),
-            "geojson_file": d["geojson_file"],
-        }
-        for d in geo_data
-    ]
+    geo_data_parsed = []
+    for d in geo_data:
+        try:
+            geo_data_parsed.append(
+                {
+                    "lon": d["geometry"]["coordinates"][0],
+                    "lat": d["geometry"]["coordinates"][1],
+                    "timestamp": d["properties"]["timestamp"],
+                    "speed": d["properties"].get("speed"),
+                    "altitude": d["properties"].get("altitude"),
+                    "geojson_file": d["geojson_file"],
+                }
+            )
+        except KeyError:
+            print(f"ERROR skipping row {d}")
+            continue
+
+    return geo_data_parsed
