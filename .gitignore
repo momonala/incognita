@@ -1,10 +1,15 @@
+# local testing files
 /cache
 /raw_data
 /tmp
 /prototyping
+incognita/flights/flights_pydeck.html
+
+# code generated/large files
 *.db
 *.ipynb
 *.mp4
+*.csv
 
 # OS generated
 .DS_Store

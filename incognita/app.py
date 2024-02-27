@@ -69,7 +69,7 @@ def get_data_for_maps(start_date: str, end_date: str, show_flights: bool):
 
 
 start_date_base, end_date_base = tuple(x.split("T")[0] for x in get_start_end_date())
-# start_date_base, end_date_base = "2023-09-15" ,  "2023-10-14" # small range for debugging
+# start_date_base, end_date_base = "2024-01-12",  "2024-01-29"  # small range for debugging
 date_fmt = '%Y-%m-%d'
 lookback = timedelta(days=21)
 start_date_base = (datetime.strptime(end_date_base, date_fmt) - lookback).strftime(date_fmt)  # noqa

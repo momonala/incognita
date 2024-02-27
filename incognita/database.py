@@ -2,7 +2,9 @@ import json
 import logging
 import sqlite3
 from functools import lru_cache
+
 import pandas as pd
+
 from incognita.utils import timed
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
