@@ -1,10 +1,11 @@
-dash==2.15.0
-folium==0.15.1
-pandas==2.2.1
-joblib==1.3.2
-pydeck~=0.8.0
-geopy==2.4.1
+dash
+folium
+pandas
+joblib
+pydeck
+geopy
 
-airportsdata==20240207
-tqdm==4.66.2
-numpy==1.26.4
+airportsdata
+tqdm
+numpy
+flask
