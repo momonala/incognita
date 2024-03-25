@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 PORT = 8383
 static_url = "full-primarily-weevil.ngrok-free.app"
-ngrok_process: subprocess.Popen | None = None
+ngrok_process = None
 
 app = Flask(__name__)
 
