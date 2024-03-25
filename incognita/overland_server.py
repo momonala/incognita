@@ -22,16 +22,16 @@ app = Flask(__name__)
 
 
 @app.route('/', methods=['GET'])
-def home():
-    return jsonify({"result": "ok"})
+def status():
+    return jsonify({"status": "ok"})
 
 
 @app.route('/dump', methods=['POST'])
 def dump():
     """Receive and store GPS GeoJSON raw_data from iPhone."""
     data = request.get_data()
-    rand = "".join(random.sample(string.ascii_lowercase, 7))
-    file_name = f'raw_data/{time.strftime("%Y%m%d-%H%M%S")}-{rand}.geojson'
+    rand_id = "".join(random.sample(string.ascii_lowercase, 7))
+    file_name = f'raw_data/{time.strftime("%Y%m%d-%H%M%S")}-{rand_id}.geojson'
 
     with open(file_name, "w") as fh:
         fh.write(data.decode())
@@ -48,15 +48,15 @@ def start_ngrok():
         logger.info(f"Starting ngrok {cmd=}")
         ngrok_process = subprocess.Popen(cmd)
         logger.info(f"Started ngrok {ngrok_process.pid=}")
-    except:
-        logger.warning("not able to start ngrok")
+    except Exception as e:
+        logger.warning(f"not able to start ngrok {e}")
 
 
 def stop_ngrok():
     global ngrok_process
     if ngrok_process is not None:
         ngrok_process.terminate()
-        ngrok_process.wait(timeout=5)  # Wait for the process to terminate
+        ngrok_process.wait(timeout=5)
 
 
 def sigterm_handler(signo, frame):
@@ -69,5 +69,6 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, sigterm_handler)
     start_ngrok()
 
-    logger.info(f"Running server at http://{get_ip_address()}:{PORT}/store")
+    logger.info(f"Running server at http://{get_ip_address()}:{PORT}/dump")
+    logger.info(f"Running server at https://{static_url}/dump")
     app.run(host='0.0.0.0', port=PORT)
