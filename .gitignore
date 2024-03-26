@@ -3,7 +3,6 @@
 /raw_data
 /tmp
 /prototyping
-incognita/flights/flights_pydeck.html
 
 # code generated/large files
 *.db
@@ -19,4 +18,4 @@ __pycache__/
 joblib_cache/
 
 # secrets
-incognita/secrets.py
+incognita/values.py
