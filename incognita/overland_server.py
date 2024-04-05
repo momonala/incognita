@@ -3,20 +3,17 @@ import logging
 import random
 import signal
 import string
-import subprocess
 import time
 
 from flask import Flask, request, jsonify
 
 from incognita.database import update_db
+from incognita.ssh_tunnel import start_ssh_tunnel, sigterm_handler
 from incognita.utils import get_ip_address
+from incognita.values import OVERLAND_PORT
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
-
-PORT = 8383
-static_url = "full-primarily-weevil.ngrok-free.app"
-ngrok_process = None
 
 app = Flask(__name__)
 
@@ -41,34 +38,8 @@ def dump():
     return jsonify({"result": "ok"})
 
 
-def start_ngrok():
-    global ngrok_process
-    try:
-        cmd = f"ngrok http --domain={static_url} {PORT}".split(" ")
-        logger.info(f"Starting ngrok {cmd=}")
-        ngrok_process = subprocess.Popen(cmd)
-        logger.info(f"Started ngrok {ngrok_process.pid=}")
-    except Exception as e:
-        logger.warning(f"not able to start ngrok {e}")
-
-
-def stop_ngrok():
-    global ngrok_process
-    if ngrok_process is not None:
-        ngrok_process.terminate()
-        ngrok_process.wait(timeout=5)
-
-
-def sigterm_handler(signo, frame):
-    """Register a signal handler to stop Ngrok when Flask is killed"""
-    stop_ngrok()
-    exit(0)
-
-
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, sigterm_handler)
-    start_ngrok()
-
-    logger.info(f"Running server at http://{get_ip_address()}:{PORT}/dump")
-    logger.info(f"Running server at https://{static_url}/dump")
-    app.run(host='0.0.0.0', port=PORT)
+    start_ssh_tunnel()
+    logger.info(f"Running server at http://{get_ip_address()}:{OVERLAND_PORT}/dump")
+    app.run(host='0.0.0.0', port=OVERLAND_PORT)
