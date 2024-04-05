@@ -3,6 +3,7 @@ import socket
 import time
 from functools import wraps
 
+import pandas as pd
 from geopy import geocoders
 from joblib import Memory
 
@@ -10,7 +11,7 @@ from incognita.data_models import GeoBoundingBox, GeoCoords
 
 logger = logging.getLogger(__name__)
 
-disk_memory = Memory("joblib_cache")
+disk_memory = Memory("cache")
 
 
 def get_ip_address() -> str:
@@ -41,7 +42,21 @@ def timed(func):
         start = time.time()
         result = func(*args, **kwargs)
         end = time.time()
-        logger.debug("{} ran in {}s".format(func.__name__, round(end - start, 2)))
+        logger.info(
+            "TIMED: {}s for {}".format(
+                round(end - start, 2),
+                func.__name__,
+            )
+        )
         return result
 
     return wrapper
+
+
+def google_sheets_url(tab_name: str = "raw") -> str:
+    document_id = "1V4hVhSH1_tHizwqlSQ2ymysQwwQMuFENfE9lB5vJPQY"
+    return f"https://docs.google.com/spreadsheets/d/{document_id}/gviz/tq?tqx=out:csv&sheet={tab_name}"
+
+
+def df_from_gsheets(gsheets_url: str = google_sheets_url()) -> pd.DataFrame:
+    return pd.read_csv(gsheets_url)

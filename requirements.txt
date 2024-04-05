@@ -1,11 +1,13 @@
-dash
-folium
 pandas
 joblib
 pydeck
 geopy
-
 airportsdata
 tqdm
 numpy
 flask
+plotly
+pycountry
+geopandas
+shapely
+requests

@@ -33,7 +33,7 @@ def add_speed_to_gdf(gdf: pd.DataFrame) -> pd.DataFrame:
     """
     gdf["time_diff"] = pd.to_datetime(gdf["timestamp"])
     diff = gdf["time_diff"].diff(1)
-    gdf["time_diff"] = diff.view(int) / 10**9  # convert to seconds
+    gdf["time_diff"] = diff.astype(int) / 10**9  # convert to seconds
     haversine_args = gdf["lat"].shift(1), gdf["lon"].shift(1), gdf.loc[1:, 'lat'], gdf.loc[1:, 'lon']
     gdf['meters'] = get_haversine_dist(*haversine_args)
     gdf['speed_calc'] = gdf['meters'] / gdf['time_diff']
@@ -54,15 +54,15 @@ def split_into_trips(gdf: pd.DataFrame, max_dist_meters: int = 400) -> pd.DataFr
         DataFrame where each row is a single "trip",
             as well as aggregations for that trip
     """
-    min_points = 5  # trip must have at least a few points
+    min_points = 100  # trip must have at least a few points
     # indicies from gdf to split trips apart on
     indices_split_trips = list(gdf[gdf["meters"] > max_dist_meters].index)
     trips = []
-    columns = ["geometry", "start", "stop", "minutes", "n_points", "avg_m/s", "max_m/s", "min_m/s"]
+    columns = ["geometry", "start", "end", "minutes", "n_points", "avg_m/s", "max_m/s", "min_m/s"]
     for i, stop_idx in enumerate(indices_split_trips + [gdf.index[-1]]):
         # get range of values within one trip
         start_idx = 0 if i == 0 else indices_split_trips[i - 1]
-        trip_df = gdf.loc[start_idx:stop_idx]
+        trip_df = gdf.iloc[start_idx:stop_idx]
 
         # ensure they meet the logical conditions of a trip
         if trip_df.shape[0] <= min_points:
@@ -73,8 +73,8 @@ def split_into_trips(gdf: pd.DataFrame, max_dist_meters: int = 400) -> pd.DataFr
 
         # add to dataframe with aggregations
         geometry = trip_df[["lon", "lat"]].values.tolist()[::5]
-        start = str(np.min(trip_df["timestamp"]))
-        stop = str(np.max(trip_df["timestamp"]))
+        start = np.min(trip_df["timestamp"])
+        stop = np.max(trip_df["timestamp"])
         duration_minutes = np.sum(trip_df["time_diff"]) / 60
         num_points = len(trip_df["timestamp"])
         avg_speed = np.mean(trip_df["speed_calc"])
@@ -86,6 +86,10 @@ def split_into_trips(gdf: pd.DataFrame, max_dist_meters: int = 400) -> pd.DataFr
         trips.append(linestring_gdf)
 
     trips_df = pd.concat(trips)
+    trips_df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    trips_df.dropna(subset=['avg_m/s'], inplace=True)
+    trips_df.dropna(subset=['max_m/s'], inplace=True)
+
     return trips_df
 
 
@@ -111,8 +115,8 @@ def get_stationary_groups(
 
     stationary_groups = stationary_groups[stationary_groups.index == 1]
     stationary_groups = stationary_groups[stationary_groups.lon.apply(len) > 1]
-    stationary_groups["start"] = stationary_groups["timestamp"].apply(min).astype(str)
-    stationary_groups["end"] = stationary_groups["timestamp"].apply(max).astype(str)
+    stationary_groups["start"] = stationary_groups["timestamp"].apply(min)
+    stationary_groups["end"] = stationary_groups["timestamp"].apply(max)
     stationary_groups["num_points"] = stationary_groups["lat"].apply(len)
     stationary_groups["lat"] = stationary_groups["lat"].apply(np.mean)
     stationary_groups["lon"] = stationary_groups["lon"].apply(np.mean)

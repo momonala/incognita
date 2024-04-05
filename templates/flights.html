@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Incognita</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+
+    <!-- Include DataTables -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.25/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.10.25/js/jquery.dataTables.min.js"></script>
+    <script src="static/table_utils.js"></script>
+    <!-- Include Plotly -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+</head>
+
+<body>
+    {% include 'navbar.html' %}
+
+<!--    overall stats-->
+    <div class="stats-div">
+        <div class="stat">
+            <h2>Flights</h2>
+            <p>{{ flights_stats['Flights'] }}</p>
+        </div>
+        <div class="stat">
+            <h2>Flight Distance (km)</h2>
+            <p>{{ flights_stats['Flight Distance'] }}</p>
+        </div>
+        <div class="stat">
+            <h2>Countries</h2>
+            <p>{{ flights_stats['Countries'] }}</p>
+        </div>
+        <div class="stat">
+            <h2>Airports</h2>
+            <p>{{ flights_stats['Airports'] }}</p>
+        </div>
+        <div class="stat">
+            <h2>Airlines</h2>
+            <p>{{ flights_stats['Airlines'] }}</p>
+        </div>
+        <div class="stat">
+            <h2>Routes</h2>
+            <p>{{ flights_stats['Routes'] }}</p>
+        </div>
+    </div>
+
+<!--    space stats-->
+    <div class="stats-div">
+        <div class="stat">
+            <p>🌎 {{ flight_dist_space_stats['earth'] }}x around the Earth </p>
+        </div>
+        <div class="stat">
+            <p>🌔 {{ flight_dist_space_stats['moon'] }}x to the Moon </p>
+        </div>
+        <div class="stat">
+            <p>🚀 {{ flight_dist_space_stats['mars'] }}x to Mars </p>
+        </div>
+    </div>
+
+<!--    flags-->
+    <div class="stats-div">
+        <div class="flag">
+            <p>{{ flags }}</p>
+        </div>
+    </div>
+
+<!--map-->
+    <div class="map-container">
+        <iframe src="{{ flights_map_filename }}" style="border:0;" loading="lazy"></iframe>
+    </div>
+    <p>Last updated: {{ modified_date }}</p>
+
+<!--plots-->
+    <div class="plot-container">
+        <div class="plot">
+            {{ flights_per_year_graph|safe }}
+        </div>
+        <div class="plot">
+            {{ flights_per_month_graph|safe }}
+        </div>
+        <div class="plot">
+            {{ flights_per_dayofweek_graph|safe }}
+        </div>
+    </div>
+
+<!--    data table-->
+    <div class="table-container">
+        <table class="datatable" id="flight_aggregation">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Origin</th>
+                    <th>Destination</th>
+                    <th>Flight #</th>
+                    <th>Departure</th>
+                    <th>Arrival</th>
+                    <th>Distance (km)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in flights_data %}
+                <tr>
+                    <td>{{row.date}}</td>
+                    <td>{{row.origin}}</td>
+                    <td>{{row.destination}}</td>
+                    <td>{{row.flight_}}</td>
+                    <td>{{row.departure_airport}}</td>
+                    <td>{{row.arrival_airport}}</td>
+                    <td>{{row.distance_km}}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>Date</th>
+                    <th>Origin</th>
+                    <th>Destination</th>
+                    <th>Flight #</th>
+                    <th>Departure</th>
+                    <th>Arrival</th>
+                    <th>Distance (km)</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <p><a href= {{ gsheets_url }} > Link to Google Sheets</a></p>
+
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Incognita</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    {% include 'navbar.html' %}
+
+<!--    overall stats-->
+    <div class="stats-div">
+        <div class="stat">
+            <h2>Countries Visited</h2>
+            <p>{{ visited_stats['Countries'] }}</p>
+        </div>
+    </div>
+
+<!--    flags-->
+    <div class="stats-div">
+        <div class="flag">
+            <p>{{ flags }}</p>
+        </div>
+    </div>
+
+<!--map-->
+    <div class="map-container">
+        <iframe src="{{ map_filename }}" style="border:0;" loading="lazy"></iframe>
+    </div>
+    <p>Last updated: {{ modified_date }}</p>
+    <p><a href= {{ gsheets_url }} > Link to Google Sheets</a></p>
+
+</body>
+</html>
