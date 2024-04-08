@@ -3,19 +3,18 @@ import subprocess
 
 import requests
 
-from incognita.values import OVERLAND_PORT
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
 
 ssh_tunnel_process = None
+port = 5003
 
 
 def start_ssh_tunnel():
     global ssh_tunnel_process
     static_url = "full-primarily-weevil.ngrok-free.app"
-    cmd = f"ngrok http --domain={static_url} {OVERLAND_PORT}"
-    cmd = f"lt --port {OVERLAND_PORT} --subdomain incognita"
+    cmd = f"ngrok http --domain={static_url} {port}"
+    cmd = f"lt --port {port} --subdomain incognita"
     logger.info(f"Starting ssh tunnel: {cmd=}")
 
     try:

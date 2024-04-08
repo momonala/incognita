@@ -9,8 +9,8 @@ from flask import Flask, request, jsonify
 
 from incognita.database import update_db
 from incognita.ssh_tunnel import start_ssh_tunnel, sigterm_handler
+from incognita.ssh_tunnel import port as overland_port
 from incognita.utils import get_ip_address
-from incognita.values import OVERLAND_PORT
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
@@ -19,6 +19,11 @@ app = Flask(__name__)
 
 
 @app.route('/', methods=['GET'])
+def root():
+    return jsonify({"status": "ok"})
+
+
+@app.route('/status', methods=['GET'])
 def status():
     return jsonify({"status": "ok"})
 
@@ -41,5 +46,5 @@ def dump():
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, sigterm_handler)
     start_ssh_tunnel()
-    logger.info(f"Running server at http://{get_ip_address()}:{OVERLAND_PORT}/dump")
-    app.run(host='0.0.0.0', port=OVERLAND_PORT)
+    logger.info(f"Running server at http://{get_ip_address()}:{overland_port}/dump")
+    app.run(host='0.0.0.0', port=overland_port)
