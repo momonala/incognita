@@ -38,9 +38,10 @@ def update_db(geojson_filename: str, db_filename: str = DB_FILE):
 
 
 def create_timestamp_index():
-    with sqlite3.connect(db_filename) as conn:
+    with sqlite3.connect(DB_FILE) as conn:
         conn.execute(f'CREATE INDEX idx_timestamp ON {DB_NAME} (timestamp);')
         conn.commit()
+    logger.info(f"Added index idx_timestamp")
 
 
 @lru_cache()

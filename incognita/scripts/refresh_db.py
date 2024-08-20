@@ -14,7 +14,7 @@ DB_FILE = "cache/geo_data.db"
 if os.path.exists(DB_FILE):
     os.remove(DB_FILE)
 
-geo_files = glob("raw_data/*.geojson")
+geo_files = sorted(glob("raw_data/*.geojson"))
 for f in tqdm(geo_files):
     update_db(f, DB_FILE)
-create_timestamp_index()
+    create_timestamp_index()
