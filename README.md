@@ -28,7 +28,7 @@
  [Service]
  WorkingDirectory=/home/mnalavadi/incognita
  Type=idle
- ExecStart=/usr/bin/python3 -m incognita.overland_server
+ ExecStart=/home/mnalavadi/miniconda3/envs/gps/bin/python -m incognita.overland_server
  User=mnalavadi
 
  [Install]
@@ -45,7 +45,7 @@
  [Service]
  WorkingDirectory=/home/mnalavadi/incognita
  Type=idle
- ExecStart=/usr/bin/python3 -m incognita.app
+ ExecStart=/home/mnalavadi/miniconda3/envs/gps/bin/python -m incognita.app
  User=mnalavadi
 
  [Install]

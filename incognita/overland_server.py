@@ -1,14 +1,12 @@
 """Basic HTTP server to receive and store GPS raw_data from iPhone Overland app."""
 import logging
 import random
-import signal
 import string
 import time
 
 from flask import Flask, request, jsonify
 
 from incognita.database import update_db
-from incognita.ssh_tunnel import start_ssh_tunnel, sigterm_handler
 from incognita.ssh_tunnel import port as overland_port
 from incognita.utils import get_ip_address
 
@@ -44,7 +42,5 @@ def dump():
 
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGTERM, sigterm_handler)
-    start_ssh_tunnel()
     logger.info(f"Running server at http://{get_ip_address()}:{overland_port}/dump")
     app.run(host='0.0.0.0', port=overland_port)

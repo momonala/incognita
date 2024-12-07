@@ -14,13 +14,11 @@ def start_ssh_tunnel():
     global ssh_tunnel_process
     static_url = "full-primarily-weevil.ngrok-free.app"
     cmd = f"ngrok http --domain={static_url} {port}"
-    cmd = f"lt --port {port} --subdomain incognita"
     logger.info(f"Starting ssh tunnel: {cmd=}")
 
     try:
         ssh_tunnel_process = subprocess.Popen(cmd.split(" "))
         logger.info(f"Started ssh tunnel: {ssh_tunnel_process.pid=}")
-        logger.info(f"ipv4: {requests.get('https://ipv4.icanhazip.com/').text.strip()}")
     except Exception as e:
         logger.warning(f"not able to start ssh tunnel: {e}")
 
