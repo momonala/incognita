@@ -7,8 +7,9 @@ import time
 from flask import Flask, request, jsonify
 
 from incognita.database import update_db
-from incognita.ssh_tunnel import port as overland_port
 from incognita.utils import get_ip_address
+
+overland_port = 5003
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)

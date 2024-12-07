@@ -44,16 +44,6 @@ def create_timestamp_index():
     logger.info(f"Added index idx_timestamp")
 
 
-@lru_cache()
-def get_start_end_date(db_filename: str = DB_FILE) -> tuple[str, str]:
-    """Returns the first and last timestamps in the db"""
-    query = f"select min(timestamp) as start_date, max(timestamp) as end_date from {DB_NAME}"
-    with sqlite3.connect(db_filename) as conn:
-        cur = conn.cursor()
-        cur.execute(query)
-        return cur.fetchone()
-
-
 def read_geojson_file(filename: str) -> list[dict] | None:
     """Return raw geojson entries as list of JSONs, plus source file name."""
     with open(filename) as f:
