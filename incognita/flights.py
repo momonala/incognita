@@ -63,6 +63,8 @@ def get_flights_df():
             "call_sign",
         ]
     ]
+    flights_df["departure_airport"] = flights_df["departure_airport"].apply(lambda s: s.strip())
+    flights_df["arrival_airport"] = flights_df["arrival_airport"].apply(lambda s: s.strip())
     flights_df["orig_coords"] = flights_df.apply(airport_iata_to_coords_departure, axis=1)
     flights_df["dest_coords"] = flights_df.apply(_airport_iata_to_coords_arrival, axis=1)
     flights_df["Distance km"] = flights_df.apply(_distance_between_airports_km, axis=1)
@@ -72,14 +74,12 @@ def get_flights_df():
 
 
 def get_countries(flights_df: pd.DataFrame) -> list:
-    airports = airportsdata.load("IATA")
-
     def country_from_airport(airport: str) -> str | None:
-        if str(airport) == "nan":
+        if str(airport) == "nan" or not airport:
             return
         if airport == "SXF":
             return "DE"
-        return airports[airport]["country"]
+        return airport_db[airport]["country"]
 
     def _country(country_code: str):
         return pycountry.countries.get(alpha_2=country_code)

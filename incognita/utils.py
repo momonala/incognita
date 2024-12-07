@@ -59,4 +59,4 @@ def google_sheets_url(tab_name: str = "raw") -> str:
 
 
 def df_from_gsheets(gsheets_url: str = google_sheets_url()) -> pd.DataFrame:
-    return pd.read_csv(gsheets_url)
+    return pd.read_csv(gsheets_url, keep_default_na=False)
