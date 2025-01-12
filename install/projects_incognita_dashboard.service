@@ -1,0 +1,12 @@
+[Unit]
+ Description=Incognita Dashboard Service
+ After=multi-user.target
+
+ [Service]
+ WorkingDirectory=/home/mnalavadi/incognita
+ Type=idle
+ ExecStart=/home/mnalavadi/miniconda3/envs/gps/bin/python -m incognita.app
+ User=mnalavadi
+
+ [Install]
+ WantedBy=multi-user.target

@@ -3,6 +3,7 @@
 /raw_data
 /tmp
 /prototyping
+/static/shapefiles/
 
 # code generated/large files
 *.db

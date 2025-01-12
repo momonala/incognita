@@ -57,14 +57,13 @@ def get_flights_df():
             "Origin",
             "Destination",
             "Flight #",
-            "departure_airport",
-            "arrival_airport",
+            "Departure Airport",
+            "Arrival Airport",
             "aircraft",
-            "call_sign",
         ]
     ]
-    flights_df["departure_airport"] = flights_df["departure_airport"].apply(lambda s: s.strip())
-    flights_df["arrival_airport"] = flights_df["arrival_airport"].apply(lambda s: s.strip())
+    flights_df["departure_airport"] = flights_df["Departure Airport"].apply(lambda s: s.strip())
+    flights_df["arrival_airport"] = flights_df["Arrival Airport"].apply(lambda s: s.strip())
     flights_df["orig_coords"] = flights_df.apply(airport_iata_to_coords_departure, axis=1)
     flights_df["dest_coords"] = flights_df.apply(_airport_iata_to_coords_arrival, axis=1)
     flights_df["Distance km"] = flights_df.apply(_distance_between_airports_km, axis=1)
