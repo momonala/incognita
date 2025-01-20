@@ -4,6 +4,7 @@
 /tmp
 /prototyping
 /static/shapefiles/
+/static/*.html
 
 # code generated/large files
 *.db
