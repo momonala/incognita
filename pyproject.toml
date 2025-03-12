@@ -1,5 +1,27 @@
 [tool.black]
 line-length = 110
-skip-string-normalization = true
-target-version = ['py38']
+target-version = ['py312']
 include = '\.py'
+
+[tool.poetry]
+name = "incognita"
+version = "0.1.0"
+description = ""
+authors = ["momonala <mnalavadi@gmail.com>"]
+readme = "README.md"
+packages = [{include = "incognita"}]
+
+[tool.poetry.dependencies]
+pandas = "^1.5"
+joblib = "^1.2"
+pydeck = "^0.7"
+geopy = "^2.2"
+airportsdata = "^1.0"
+tqdm = "^4.64"
+numpy = "^1.23"
+flask = "^2.2"
+plotly = "^5.10"
+pycountry = "^22.1"
+geopandas = "^0.10"
+shapely = "^1.8"
+requests = "^2.28"
