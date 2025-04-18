@@ -6,7 +6,7 @@ import time
 
 from flask import Flask, request, jsonify
 
-from incognita.database import update_db
+from incognita.database import update_db, get_recent_coordinates
 from incognita.utils import get_ip_address
 
 overland_port = 5003
@@ -40,6 +40,25 @@ def dump():
 
     update_db(file_name)
     return jsonify({"result": "ok"})
+
+
+@app.route('/coordinates', methods=['GET'])
+def get_coordinates():
+    """Return list of (timestamp, lat, lon) tuples from database."""
+    try:
+        coordinates = get_recent_coordinates()
+        return jsonify({
+            "status": "success",
+            "count": len(coordinates),
+            "coordinates": coordinates
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching coordinates: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "Failed to fetch coordinates.\n{e}"
+        }), 500
 
 
 if __name__ == "__main__":

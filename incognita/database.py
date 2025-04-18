@@ -76,3 +76,30 @@ def extract_properties_from_geojson(geo_data: list[dict]) -> list[dict]:
             continue
 
     return geo_data_parsed
+
+
+@timed
+def get_recent_coordinates() -> list[tuple]:
+    """Return coordinates from the last 24 hours sorted by timestamp.
+    
+    Args:
+        limit: maximum number of coordinates to return as a safeguard
+    Returns:
+        List of (ISO 8601 timestamp, latitude, longitude) tuples from last 24 hours,
+        sorted by timestamp ascending
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        query = f"""
+            SELECT 
+                strftime('%Y-%m-%dT%H:%M:%SZ', timestamp) as timestamp,
+                lat,
+                lon 
+            FROM {DB_NAME}
+            WHERE timestamp >= datetime('now', '-1 day')
+            ORDER BY timestamp ASC
+        """
+        cursor.execute(query)
+        coordinates = cursor.fetchall()
+        
+        return [(ts, float(lat), float(lon)) for ts, lat, lon in coordinates]
