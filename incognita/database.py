@@ -56,8 +56,18 @@ def read_geojson_file(filename: str) -> list[dict] | None:
         return [{**d, **{"geojson_file": filename}} for d in raw_geojson]
 
 
-def extract_properties_from_geojson(geo_data: list[dict]) -> list[dict]:
-    """Parse out the relevant content from a raw geojson file."""
+def filter_by_accuracy(geo_data: list[dict], max_horizontal_accuracy: float = 20.0) -> list[dict]:
+    """Filter out GPS points with horizontal accuracy worse than specified threshold."""
+    return [
+        point for point in geo_data 
+        if point["properties"].get("horizontal_accuracy", float("inf")) <= max_horizontal_accuracy
+    ]
+
+
+def extract_properties_from_geojson(geo_data: list[dict], max_horizontal_accuracy: float = 20.0) -> list[dict]:
+    """Parse out the relevant content from a raw geojson file. """
+    geo_data = filter_by_accuracy(geo_data, max_horizontal_accuracy)
+    
     geo_data_parsed = []
     for d in geo_data:
         try:
@@ -68,11 +78,12 @@ def extract_properties_from_geojson(geo_data: list[dict]) -> list[dict]:
                     "timestamp": d["properties"]["timestamp"],
                     "speed": d["properties"].get("speed"),
                     "altitude": d["properties"].get("altitude"),
+                    "horizontal_accuracy": d["properties"].get("horizontal_accuracy"),
                     "geojson_file": d["geojson_file"],
                 }
             )
         except KeyError:
-            print(f"ERROR skipping row {d}")
+            logger.error(f"ERROR skipping row {d}")
             continue
 
     return geo_data_parsed
