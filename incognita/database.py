@@ -102,6 +102,10 @@ def get_recent_coordinates(lookback_hours: int = 24) -> list[tuple]:
         List of (ISO 8601 timestamp, latitude, longitude) tuples from specified period,
         sorted by timestamp ascending
     """
+    # Calculate exact timestamp bounds for the window we want
+    end_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%dT%H:%M:%SZ')
+    start_time = (pd.Timestamp.now(tz='UTC') - pd.Timedelta(hours=lookback_hours)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         query = f"""
@@ -110,10 +114,10 @@ def get_recent_coordinates(lookback_hours: int = 24) -> list[tuple]:
                 lat,
                 lon 
             FROM {DB_NAME}
-            WHERE timestamp >= datetime('now', ? || ' hours')
+            WHERE timestamp >= ? AND timestamp <= ?
             ORDER BY timestamp ASC
         """
-        cursor.execute(query, (f'-{lookback_hours}',))
+        cursor.execute(query, (start_time, end_time))
         coordinates = cursor.fetchall()
         
         return [(ts, float(lat), float(lon)) for ts, lat, lon in coordinates]
