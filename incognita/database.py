@@ -31,6 +31,9 @@ def update_db(geojson_filename: str, db_filename: str = DB_FILE):
         return
     parsed = extract_properties_from_geojson(raw_geojson)
     df = pd.DataFrame(parsed)
+    if df.empty:
+        logger.info(f"No data to update db with {geojson_filename}")
+        return
 
     with sqlite3.connect(db_filename) as conn:
         df.to_sql(DB_NAME, conn, if_exists='append', index=False)
@@ -107,7 +110,6 @@ def get_recent_coordinates(lookback_hours: int = 24) -> list[tuple]:
                 lat,
                 lon 
             FROM {DB_NAME}
-            WHERE timestamp >= datetime('now', ? || ' hours')
             ORDER BY timestamp ASC
         """
         cursor.execute(query, (f'-{lookback_hours}',))
