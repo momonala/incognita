@@ -44,12 +44,28 @@ def dump():
 
 @app.route('/coordinates', methods=['GET'])
 def get_coordinates():
-    """Return list of (timestamp, lat, lon) tuples from database."""
+    """Return list of (timestamp, lat, lon) tuples from database.
+    
+    Query Parameters:
+        lookback_hours: Optional[int] - number of hours to look back (default: 24)
+    """
     try:
-        coordinates = get_recent_coordinates()
+        # Get lookback hours from query params, default to 24 if not provided
+        lookback_hours = request.args.get('lookback_hours', default=24, type=int)
+        
+        # Ensure lookback_hours is positive
+        if lookback_hours <= 0:
+            return jsonify({
+                "status": "error",
+                "message": "lookback_hours must be positive"
+            }), 400
+            
+            
+        coordinates = get_recent_coordinates(lookback_hours=lookback_hours)
         return jsonify({
             "status": "success",
             "count": len(coordinates),
+            "lookback_hours": lookback_hours,
             "coordinates": coordinates
         })
         
@@ -57,7 +73,7 @@ def get_coordinates():
         logger.error(f"Error fetching coordinates: {str(e)}")
         return jsonify({
             "status": "error",
-            "message": "Failed to fetch coordinates.\n{e}"
+            "message": f"Failed to fetch coordinates: {str(e)}"
         }), 500
 
 
