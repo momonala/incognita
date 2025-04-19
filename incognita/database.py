@@ -110,6 +110,7 @@ def get_recent_coordinates(lookback_hours: int = 24) -> list[tuple]:
                 lat,
                 lon 
             FROM {DB_NAME}
+            WHERE timestamp >= datetime('now', ? || ' hours')
             ORDER BY timestamp ASC
         """
         cursor.execute(query, (f'-{lookback_hours}',))
