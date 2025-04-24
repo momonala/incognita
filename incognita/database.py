@@ -7,11 +7,13 @@ import pandas as pd
 
 from incognita.utils import timed
 
-logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
+logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DB_FILE = "cache/geo_data.db"
 DB_NAME = "overland"
+
+MIN_HORIZONTAL_ACCURACY = 200.0
 
 
 @timed
@@ -19,7 +21,7 @@ DB_NAME = "overland"
 def get_gdf_from_db(db_filename: str = DB_FILE) -> pd.DataFrame:
     """Returned the cached geojson/location dataframe."""
     with sqlite3.connect(db_filename) as conn:
-        df = pd.read_sql(f'select lon, lat, timestamp from {DB_NAME}', conn)
+        df = pd.read_sql(f"select lon, lat, timestamp from {DB_NAME}", conn)
     return df.sort_values("timestamp").reset_index(drop=True)
 
 
@@ -36,13 +38,13 @@ def update_db(geojson_filename: str, db_filename: str = DB_FILE):
         return
 
     with sqlite3.connect(db_filename) as conn:
-        df.to_sql(DB_NAME, conn, if_exists='append', index=False)
+        df.to_sql(DB_NAME, conn, if_exists="append", index=False)
     logger.info(f"Updated: {db_filename=} with: {geojson_filename=} size: {df.shape=}")
 
 
 def create_timestamp_index():
     with sqlite3.connect(DB_FILE) as conn:
-        conn.execute(f'CREATE INDEX idx_timestamp ON {DB_NAME} (timestamp);')
+        conn.execute(f"CREATE INDEX idx_timestamp ON {DB_NAME} (timestamp);")
         conn.commit()
     logger.info(f"Added index idx_timestamp")
 
@@ -59,18 +61,21 @@ def read_geojson_file(filename: str) -> list[dict] | None:
         return [{**d, **{"geojson_file": filename}} for d in raw_geojson]
 
 
-def filter_by_accuracy(geo_data: list[dict], max_horizontal_accuracy: float = 20.0) -> list[dict]:
+def filter_by_accuracy(geo_data: list[dict], min_horizontal_accuracy: float) -> list[dict]:
     """Filter out GPS points with horizontal accuracy worse than specified threshold."""
     return [
-        point for point in geo_data 
-        if point["properties"].get("horizontal_accuracy", float("inf")) <= max_horizontal_accuracy
+        point
+        for point in geo_data
+        if point["properties"].get("horizontal_accuracy", float("inf")) <= min_horizontal_accuracy
     ]
 
 
-def extract_properties_from_geojson(geo_data: list[dict], max_horizontal_accuracy: float = 20.0) -> list[dict]:
-    """Parse out the relevant content from a raw geojson file. """
-    geo_data = filter_by_accuracy(geo_data, max_horizontal_accuracy)
-    
+def extract_properties_from_geojson(
+    geo_data: list[dict], min_horizontal_accuracy: float = MIN_HORIZONTAL_ACCURACY
+) -> list[dict]:
+    """Parse out the relevant content from a raw geojson file."""
+    geo_data = filter_by_accuracy(geo_data, min_horizontal_accuracy)
+
     geo_data_parsed = []
     for d in geo_data:
         try:
@@ -92,10 +97,21 @@ def extract_properties_from_geojson(geo_data: list[dict], max_horizontal_accurac
     return geo_data_parsed
 
 
+def get_last_timestamp(db_filename: str = DB_FILE) -> pd.Timestamp:
+    with sqlite3.connect(db_filename) as conn:
+        cursor = conn.cursor()
+        query = f"SELECT MAX(timestamp) FROM {DB_NAME}"
+        cursor.execute(query)
+        return cursor.fetchone()[0]
+
+
 @timed
-def get_recent_coordinates(lookback_hours: int = 24) -> list[tuple]:
+@lru_cache()
+def get_recent_coordinates(
+    lookback_hours: int = 24, age_db: pd.Timestamp = get_last_timestamp()
+) -> list[tuple]:
     """Return coordinates from the specified lookback period sorted by timestamp.
-    
+
     Args:
         lookback_hours: number of hours to look back from current time (default: 24)
     Returns:
@@ -103,21 +119,27 @@ def get_recent_coordinates(lookback_hours: int = 24) -> list[tuple]:
         sorted by timestamp ascending
     """
     # Calculate exact timestamp bounds for the window we want
-    end_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%dT%H:%M:%SZ')
-    start_time = (pd.Timestamp.now(tz='UTC') - pd.Timedelta(hours=lookback_hours)).strftime('%Y-%m-%dT%H:%M:%SZ')
-    
+    end_time = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%dT%H:%M:%SZ")
+    start_time = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=lookback_hours)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         query = f"""
             SELECT 
                 strftime('%Y-%m-%dT%H:%M:%SZ', timestamp) as timestamp,
                 lat,
-                lon 
+                lon,
+                horizontal_accuracy
             FROM {DB_NAME}
             WHERE timestamp >= ? AND timestamp <= ?
             ORDER BY timestamp ASC
         """
         cursor.execute(query, (start_time, end_time))
         coordinates = cursor.fetchall()
-        
-        return [(ts, float(lat), float(lon)) for ts, lat, lon in coordinates]
+
+        return [
+            (ts, float(lat), float(lon), float(horizontal_accuracy))
+            for ts, lat, lon, horizontal_accuracy in coordinates
+        ]
