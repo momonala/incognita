@@ -10,7 +10,8 @@ import pydeck as pdk
 from incognita.countries import get_countries_df
 from incognita.processing import get_haversine_dist
 from incognita.utils import coordinates_from_place_name, df_from_gsheets
-from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY, flights_map_filename
+from incognita.values import (GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY,
+                              flights_map_filename)
 
 airport_db = airportsdata.load("IATA")
 

@@ -5,6 +5,7 @@
 /prototyping
 /static/shapefiles/
 /static/*.html
+recent_locations.html
 
 # code generated/large files
 *.db

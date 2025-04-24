@@ -5,18 +5,15 @@ from datetime import datetime, timedelta
 
 from flask import Flask, render_template, request, send_from_directory
 
-from incognita.countries import get_countries_visited, get_visited_stats, visited_df_to_deck_map
-from incognita.flights import (
-    flights_df_to_deck_map,
-    flights_df_to_graph,
-    get_countries,
-    get_flight_dist_space_stats,
-    get_flights_df,
-    get_flights_stats,
-)
+from incognita.countries import (get_countries_visited, get_visited_stats,
+                                 visited_df_to_deck_map)
+from incognita.flights import (flights_df_to_deck_map, flights_df_to_graph,
+                               get_countries, get_flight_dist_space_stats,
+                               get_flights_df, get_flights_stats)
 from incognita.gps import get_deck_map_html
 from incognita.utils import coordinates_from_place_name, google_sheets_url
-from incognita.values import flights_map_filename, gps_map_filename, visited_map_filename
+from incognita.values import (flights_map_filename, gps_map_filename,
+                              visited_map_filename)
 
 app = Flask(__name__)
 
