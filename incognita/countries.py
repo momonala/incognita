@@ -4,17 +4,17 @@ import pycountry
 import pydeck as pdk
 from shapely.geometry import MultiPolygon
 
-from incognita.utils import timed, disk_memory, google_sheets_url, df_from_gsheets
+from incognita.utils import df_from_gsheets, disk_memory, google_sheets_url, timed
 from incognita.values import visited_map_filename
 
 
 def explode_multi_polygons(df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     df_exploded = pd.DataFrame(columns=df.columns)
     for index, row in df.iterrows():
-        if isinstance(row['geometry'], MultiPolygon):
-            for geom_part in row['geometry'].geoms:
+        if isinstance(row["geometry"], MultiPolygon):
+            for geom_part in row["geometry"].geoms:
                 new_row = row.copy()
-                new_row['geometry'] = geom_part
+                new_row["geometry"] = geom_part
                 df_exploded = pd.concat([df_exploded, pd.DataFrame([new_row])], ignore_index=True)
         else:
             df_exploded = pd.concat([df_exploded, pd.DataFrame([row])], ignore_index=True)
@@ -62,11 +62,11 @@ def get_countries_df(resolution: int = 10) -> gpd.GeoDataFrame:
     shapefile = f"static/shapefiles/ne_{resolution}m_admin_0_countries.shp"
     world = gpd.read_file(shapefile)
     df_exploded = explode_multi_polygons(world)
-    df_exploded['geometry'] = df_exploded['geometry'].apply(lambda x: x.__geo_interface__)
-    df_exploded[['name', "alpha_3", 'flag']] = df_exploded.apply(
-        get_country_info, axis=1, result_type='expand'
+    df_exploded["geometry"] = df_exploded["geometry"].apply(lambda x: x.__geo_interface__)
+    df_exploded[["name", "alpha_3", "flag"]] = df_exploded.apply(
+        get_country_info, axis=1, result_type="expand"
     )
-    countries_df = df_exploded[['name', "alpha_3", 'flag', "geometry"]]
+    countries_df = df_exploded[["name", "alpha_3", "flag", "geometry"]]
     return countries_df
 
 

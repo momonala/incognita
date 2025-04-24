@@ -2,17 +2,18 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
-from flask import Flask, render_template, send_from_directory, request
 
+from flask import Flask, render_template, request, send_from_directory
+
+from incognita.countries import get_countries_visited, get_visited_stats, visited_df_to_deck_map
 from incognita.flights import (
-    get_flights_df,
     flights_df_to_deck_map,
     flights_df_to_graph,
-    get_flights_stats,
-    get_flight_dist_space_stats,
     get_countries,
+    get_flight_dist_space_stats,
+    get_flights_df,
+    get_flights_stats,
 )
-from incognita.countries import get_countries_visited, visited_df_to_deck_map, get_visited_stats
 from incognita.gps import get_deck_map_html
 from incognita.utils import coordinates_from_place_name, google_sheets_url
 from incognita.values import flights_map_filename, gps_map_filename, visited_map_filename
@@ -63,7 +64,7 @@ def flights():
     map_update_date = get_age_of_map_update(flights_map_filename)
     logger.info(f"Updated flights map at: {map_update_date}")
 
-    flights_df['Date'] = flights_df['Date'].dt.strftime('%Y.%m.%d')
+    flights_df["Date"] = flights_df["Date"].dt.strftime("%Y.%m.%d")
     flights_df.columns = [col.lower().replace(" ", "_").replace("#", "") for col in flights_df.columns]
     return render_template(
         "flights.html",  # noqa

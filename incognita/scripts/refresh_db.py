@@ -4,7 +4,7 @@ from glob import glob
 
 from tqdm import tqdm
 
-from incognita.database import update_db, create_timestamp_index
+from incognita.database import create_timestamp_index, update_db
 
 logger = logging.getLogger("incognita.database")
 logger.setLevel(logging.WARNING)

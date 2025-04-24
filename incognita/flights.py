@@ -7,12 +7,12 @@ import pycountry
 import pydeck
 import pydeck as pdk
 
+from incognita.countries import get_countries_df
 from incognita.processing import get_haversine_dist
 from incognita.utils import coordinates_from_place_name, df_from_gsheets
-from incognita.values import MAPBOX_API_KEY, GOOGLE_MAPS_API_KEY, flights_map_filename
-from incognita.countries import get_countries_df
+from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY, flights_map_filename
 
-airport_db = airportsdata.load('IATA')
+airport_db = airportsdata.load("IATA")
 
 
 def _city_to_coord(city: str) -> tuple[float, float]:
@@ -67,7 +67,7 @@ def get_flights_df():
     flights_df["orig_coords"] = flights_df.apply(airport_iata_to_coords_departure, axis=1)
     flights_df["dest_coords"] = flights_df.apply(_airport_iata_to_coords_arrival, axis=1)
     flights_df["Distance km"] = flights_df.apply(_distance_between_airports_km, axis=1)
-    flights_df["Date"] = pd.to_datetime(flights_df['Date'], format='mixed')
+    flights_df["Date"] = pd.to_datetime(flights_df["Date"], format="mixed")
     flights_df.sort_values(by="Date", inplace=True)
     return flights_df
 
@@ -100,7 +100,7 @@ def get_flights_stats(flights_df: pd.DataFrame) -> dict:
     flights_df["route"] = flights_df["departure_airport"] + "-" + flights_df["arrival_airport"]
     routes_value_counts = flights_df["route"].value_counts()
     airport_value_counts = pd.concat(
-        [flights_df['departure_airport'], flights_df['arrival_airport']]
+        [flights_df["departure_airport"], flights_df["arrival_airport"]]
     ).value_counts()
     flight_distance = round(flights_df["Distance km"].sum())
     countires = get_countries(flights_df)
@@ -138,9 +138,9 @@ def get_flight_dist_space_stats(flight_distance: float) -> dict:
 
 def flights_df_to_graph(flights_df: pd.DataFrame, agg_by: str):
     assert agg_by in ["year", "month", "dayofweek"], f"{agg_by=} not allowed"
-    flights_per_year = flights_df.groupby(flights_df['Date'].dt.year).size()
-    flights_per_month = flights_df.groupby(flights_df['Date'].dt.month).size()
-    flights_per_dayofweek = flights_df.groupby(flights_df['Date'].dt.dayofweek).size()
+    flights_per_year = flights_df.groupby(flights_df["Date"].dt.year).size()
+    flights_per_month = flights_df.groupby(flights_df["Date"].dt.month).size()
+    flights_per_dayofweek = flights_df.groupby(flights_df["Date"].dt.dayofweek).size()
 
     agg_by_mapping = {
         "year": {
@@ -172,9 +172,9 @@ def flights_df_to_graph(flights_df: pd.DataFrame, agg_by: str):
         go.Scatter(
             x=x_labels,  # Use x_labels instead of data.index
             y=data.values,
-            mode='lines+markers',
-            marker=dict(color='royalblue', size=5),
-            line=dict(color='royalblue', width=2, shape='spline'),
+            mode="lines+markers",
+            marker=dict(color="royalblue", size=5),
+            line=dict(color="royalblue", width=2, shape="spline"),
         )
     )
 
@@ -183,27 +183,27 @@ def flights_df_to_graph(flights_df: pd.DataFrame, agg_by: str):
         title=title,
         xaxis=dict(
             title=x_title,
-            tickmode='array',
+            tickmode="array",
             tickvals=list(range(len(x_labels))),
             ticktext=x_labels,
             tickangle=-45,
         ),
         yaxis=dict(title="Number of Flights"),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='black'),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="black"),
         margin=dict(l=40, r=40, t=80, b=40),
-        hovermode='x',
+        hovermode="x",
         shapes=[
             {
-                'type': 'line',
-                'xref': 'paper',
-                'yref': 'y',
-                'x0': 0,
-                'x1': 1,
-                'y0': i,
-                'y1': i,
-                'line': dict(color='gray', width=1),
+                "type": "line",
+                "xref": "paper",
+                "yref": "y",
+                "x0": 0,
+                "x1": 1,
+                "y0": i,
+                "y1": i,
+                "line": dict(color="gray", width=1),
             }
             for i in range(5, max(data.values), 5)
         ],
@@ -224,8 +224,8 @@ def _tooltip(row):
 
 def flights_df_to_deck_map(flights_df: pd.DataFrame) -> pydeck.Deck:
     # Define layers to display on a map
-    flights_df['date_vis'] = flights_df['Date'].apply(lambda x: x.strftime('%Y-%m-%d'))
-    flights_df['tooltip'] = flights_df.apply(_tooltip, axis=1)
+    flights_df["date_vis"] = flights_df["Date"].apply(lambda x: x.strftime("%Y-%m-%d"))
+    flights_df["tooltip"] = flights_df.apply(_tooltip, axis=1)
     flights_layer = pdk.Layer(
         "GreatCircleLayer",
         flights_df,

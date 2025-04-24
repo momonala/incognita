@@ -7,11 +7,10 @@ import pandas as pd
 import pydeck as pdk
 
 from incognita.data_models import GeoBoundingBox
-from incognita.database import get_gdf_from_db, DB_FILE
-from incognita.processing import add_speed_to_gdf, split_into_trips, get_stationary_groups
-from incognita.utils import timed, disk_memory
-from incognita.values import gps_map_filename, MAPBOX_API_KEY, GOOGLE_MAPS_API_KEY
-
+from incognita.database import DB_FILE, get_gdf_from_db
+from incognita.processing import add_speed_to_gdf, get_stationary_groups, split_into_trips
+from incognita.utils import disk_memory, timed
+from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY, gps_map_filename
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)

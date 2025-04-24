@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from incognita.data_models import GeoCoords, GeoBoundingBox
+from incognita.data_models import GeoBoundingBox, GeoCoords
 from incognita.database import get_gdf_from_db
 from incognita.processing import add_speed_to_gdf
 
@@ -97,7 +97,7 @@ def gdf_to_frames(gdf_ber: pd.DataFrame, video_type: str, fade_range: int) -> np
 def write_video(img_frame_sequence: np.array, outname: str):
     if os.path.exists(outname):
         os.remove(outname)
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    fourcc = cv2.VideoWriter_fourcc(*"XVID")
     fps = 30
     out = cv2.VideoWriter(outname, fourcc, fps, (IMG_SIZE, IMG_SIZE), False)
     for frame in tqdm(img_frame_sequence):
@@ -113,7 +113,7 @@ def main(outname, video_type, fade_range):
     write_video(formatted_frames, outname)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--outname", type=str)
     parser.add_argument(

@@ -5,7 +5,7 @@ import pandas as pd
 
 from incognita.utils import timed
 
-logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
+logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -34,9 +34,9 @@ def add_speed_to_gdf(gdf: pd.DataFrame) -> pd.DataFrame:
     gdf["time_diff"] = pd.to_datetime(gdf["timestamp"])
     diff = gdf["time_diff"].diff(1)
     gdf["time_diff"] = diff.astype(int) / 10**9  # convert to seconds
-    haversine_args = gdf["lat"].shift(1), gdf["lon"].shift(1), gdf.loc[1:, 'lat'], gdf.loc[1:, 'lon']
-    gdf['meters'] = get_haversine_dist(*haversine_args)
-    gdf['speed_calc'] = gdf['meters'] / gdf['time_diff']
+    haversine_args = gdf["lat"].shift(1), gdf["lon"].shift(1), gdf.loc[1:, "lat"], gdf.loc[1:, "lon"]
+    gdf["meters"] = get_haversine_dist(*haversine_args)
+    gdf["speed_calc"] = gdf["meters"] / gdf["time_diff"]
     gdf["index"] = gdf.index
     return gdf
 
@@ -87,8 +87,8 @@ def split_into_trips(gdf: pd.DataFrame, max_dist_meters: int = 400) -> pd.DataFr
 
     trips_df = pd.concat(trips)
     trips_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    trips_df.dropna(subset=['avg_m/s'], inplace=True)
-    trips_df.dropna(subset=['max_m/s'], inplace=True)
+    trips_df.dropna(subset=["avg_m/s"], inplace=True)
+    trips_df.dropna(subset=["max_m/s"], inplace=True)
 
     return trips_df
 
