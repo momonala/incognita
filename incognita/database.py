@@ -107,15 +107,19 @@ def get_last_timestamp(db_filename: str = DB_FILE) -> pd.Timestamp:
 
 @timed
 @lru_cache()
-def get_recent_coordinates(
-    lookback_hours: int = 24, age_db: pd.Timestamp = get_last_timestamp()
+def fetch_coordinates(
+    lookback_hours: int = 24,
+    min_accuracy: float | None = None,
+    age_db: pd.Timestamp = get_last_timestamp(),
 ) -> list[tuple]:
     """Return coordinates from the specified lookback period sorted by timestamp.
 
     Args:
         lookback_hours: number of hours to look back from current time (default: 24)
+        age_db: timestamp of the oldest point in the database (default: get_last_timestamp())
+        min_accuracy: minimum horizontal accuracy threshold in meters (default: None)
     Returns:
-        List of (ISO 8601 timestamp, latitude, longitude) tuples from specified period,
+        List of (ISO 8601 timestamp, latitude, longitude, horizontal_accuracy) tuples from specified period,
         sorted by timestamp ascending
     """
     # Calculate exact timestamp bounds for the window we want
@@ -126,7 +130,7 @@ def get_recent_coordinates(
 
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        query = f"""
+        base_query = f"""
             SELECT 
                 strftime('%Y-%m-%dT%H:%M:%SZ', timestamp) as timestamp,
                 lat,
@@ -134,9 +138,15 @@ def get_recent_coordinates(
                 horizontal_accuracy
             FROM {DB_NAME}
             WHERE timestamp >= ? AND timestamp <= ?
-            ORDER BY timestamp ASC
         """
-        cursor.execute(query, (start_time, end_time))
+        
+        params = [start_time, end_time]
+        if min_accuracy is not None:
+            base_query += " AND horizontal_accuracy <= ?"
+            params.append(min_accuracy)
+            
+        base_query += " ORDER BY timestamp ASC"
+        cursor.execute(base_query, params)
         coordinates = cursor.fetchall()
 
         return [

@@ -7,9 +7,10 @@ import time
 
 from flask import Flask, jsonify, request
 
-from incognita.database import get_recent_coordinates, update_db
+from incognita.database import fetch_coordinates, update_db
 from incognita.utils import get_ip_address
-
+from incognita.processing import add_speed_to_gdf
+import pandas as pd
 overland_port = 5003
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
@@ -49,21 +50,40 @@ def get_coordinates():
 
     Query Parameters:
         lookback_hours: Optional[int] - number of hours to look back (default: 24)
+        min_accuracy: Optional[float] - minimum accuracy in meters (default: 200)
+        max_distance: Optional[float] - maximum distance in kilometers (default: 0.1)
     """
     try:
         # Get lookback hours from query params, default to 24 if not provided
         lookback_hours = request.args.get("lookback_hours", default=24, type=int)
+        min_accuracy = request.args.get("min_accuracy", default=200, type=float)
+        max_distance = request.args.get("max_distance", default=0.1, type=float)
 
-        # Ensure lookback_hours is positive
-        if lookback_hours <= 0:
-            return jsonify({"status": "error", "message": "lookback_hours must be positive"}), 400
+        # Ensure args are positive
+        for arg in [lookback_hours, min_accuracy, max_distance]:
+            if arg <= 0:
+                return jsonify({"status": "error", "message": f"{arg} must be positive"}), 400
 
-        coordinates = get_recent_coordinates(lookback_hours=lookback_hours)
+        # Fetch coordinates while filtering by accuracy
+        logger.info(f"Fetching coordinates with {lookback_hours=} {min_accuracy=} {max_distance=}")
+        coordinates = fetch_coordinates(
+            lookback_hours=lookback_hours,
+            min_accuracy=min_accuracy,
+        )
+        # Convert to pandas DataFrame, add speed, filter by distance
+        coordinates = pd.DataFrame(coordinates, columns=["timestamp", "lat", "lon", "accuracy"])
+        coordinates = add_speed_to_gdf(coordinates)
+        coordinates = coordinates[coordinates["meters"] <= max_distance]
+        coordinates = [(row["timestamp"], row["lat"], row["lon"], row["accuracy"]) for _, row in coordinates.iterrows()]
+
+
         return jsonify(
             {
                 "status": "success",
                 "count": len(coordinates),
                 "lookback_hours": lookback_hours,
+                "min_accuracy": min_accuracy,
+                "max_distance": max_distance,
                 "coordinates": coordinates,
             }
         )
