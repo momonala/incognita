@@ -4,8 +4,9 @@ import pandas as pd
 import pydeck as pdk
 import requests
 from joblib import Memory
-from incognita.processing import add_speed_to_gdf
+
 from incognita.database import fetch_coordinates
+from incognita.processing import add_speed_to_gdf
 
 memory = Memory(".cache")
 
@@ -130,7 +131,9 @@ def main():
     """Fetch data and create visualization."""
     use_api = True
     if use_api:
-        coordinates = get_coordinates(lookback_hours=LOOKBACK_HOURS, min_accuracy=MIN_ACCURACY_M, max_distance=MAX_DISTANCE_M)
+        coordinates = get_coordinates(
+            lookback_hours=LOOKBACK_HOURS, min_accuracy=MIN_ACCURACY_M, max_distance=MAX_DISTANCE_M
+        )
         coordinates = pd.DataFrame(coordinates, columns=["timestamp", "lat", "lon", "accuracy"])
 
     else:
