@@ -4,7 +4,7 @@ import logging
 import random
 import string
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pandas as pd
 import requests
@@ -24,17 +24,14 @@ app = Flask(__name__)
 
 overland_port = 5003
 
-# Heartbeat timeout in seconds
-HEARTBEAT_TIMEOUT = 90
-WATCHDOG_INTERVAL = 30
-
-# Global state
+# Heartbeat timeout settings (seconds)
+HEARTBEAT_TIMEOUT = 60 * 3
 last_heartbeat = datetime.now()
 
 
 def send_telegram_alert():
     """Send alert message with current backoff status."""
-    message = f"🪦 No heartbeat received!"
+    message = f"🪦 No heartbeat in last {round(HEARTBEAT_TIMEOUT/60, 1)} minutes!\nLast received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
     
@@ -59,24 +56,22 @@ def watchdog():
     global last_heartbeat, HEARTBEAT_TIMEOUT
     logger.info("Watchdog started")
     while True:
-        time.sleep(WATCHDOG_INTERVAL)
+        time.sleep(HEARTBEAT_TIMEOUT)
         now = datetime.now()
         if (now - last_heartbeat).total_seconds() > HEARTBEAT_TIMEOUT:
             send_telegram_alert()
-            # reset heartbeat to avoid spamming multiple alerts
-            # double timeout, but not more than 1 hour
-            last_heartbeat = now
-            HEARTBEAT_TIMEOUT = min(2 * HEARTBEAT_TIMEOUT, 60 * 60)
+            # avoid spamming multiple alerts - double timeout, but not more than 1 hour
+            HEARTBEAT_TIMEOUT *= 2
+            HEARTBEAT_TIMEOUT = min(HEARTBEAT_TIMEOUT, 60 * 60)
         else:
-            # reset timeout to 90 seconds if heartbeat is received
-            HEARTBEAT_TIMEOUT = 90
+            # reset timeout to 3 minutes if heartbeat is received
+            HEARTBEAT_TIMEOUT = 60 * 3
 
 
 @app.route("/heartbeat", methods=["POST"])
 def heartbeat():
     global last_heartbeat
     last_heartbeat = datetime.now()
-    logger.info(f"Heartbeat received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}")
     return jsonify({"status": "ok"}), 200
 
 
@@ -146,6 +141,8 @@ def get_coordinates():
 
 
 if __name__ == "__main__":
+    logger.info(f"Starting Watchdog Heartbeat timer.")
+    logger.info(f"Timeout: {HEARTBEAT_TIMEOUT} seconds.")
     threading.Thread(target=watchdog, daemon=True).start()
-    logger.info(f"Running server at http://{get_ip_address()}:{overland_port}/dump")
+    logger.info(f"Running server at http://{get_ip_address()}:{overland_port}")
     app.run(host="0.0.0.0", port=overland_port)
