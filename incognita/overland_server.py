@@ -4,7 +4,7 @@ import logging
 import random
 import string
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 import requests
@@ -24,22 +24,25 @@ app = Flask(__name__)
 
 overland_port = 5003
 
+# Heartbeat timeout in seconds
 HEARTBEAT_TIMEOUT = 90
 WATCHDOG_INTERVAL = 30
-
 
 # Global state
 last_heartbeat = datetime.now()
 
 
 def send_telegram_alert():
-    message = "🚨 ALERT: No heartbeat received from Trace!"
+    """Send alert message with current backoff status."""
+    message = f"🪦 No heartbeat received!"
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
+    
     try:
         requests.post(url, json=payload, timeout=10)
+        logger.info(f"{message}. Telegram alert sent.")
     except Exception as e:
-        print(f"Failed to send Telegram message: {e}")
+        logger.error(f"Failed to send Telegram message: {e}")
 
 
 @app.route("/", methods=["GET"])
@@ -59,10 +62,14 @@ def watchdog():
         time.sleep(WATCHDOG_INTERVAL)
         now = datetime.now()
         if (now - last_heartbeat).total_seconds() > HEARTBEAT_TIMEOUT:
-            logger.warning("No recent heartbeat. Sending alert.")
             send_telegram_alert()
             # reset heartbeat to avoid spamming multiple alerts
+            # double timeout, but not more than 1 hour
             last_heartbeat = now
+            HEARTBEAT_TIMEOUT = max(2 * HEARTBEAT_TIMEOUT, 60 * 60)
+        else:
+            # reset timeout to 90 seconds if heartbeat is received
+            HEARTBEAT_TIMEOUT = 90
 
 
 @app.route("/heartbeat", methods=["POST"])
