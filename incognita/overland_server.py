@@ -9,10 +9,13 @@ from datetime import datetime
 import pandas as pd
 import requests
 from flask import Flask, jsonify, request
+import threading
 
 from incognita.database import fetch_coordinates, update_db
 from incognita.processing import add_speed_to_gdf
 from incognita.utils import get_ip_address
+from incognita.values import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
@@ -23,8 +26,7 @@ overland_port = 5003
 
 HEARTBEAT_TIMEOUT = 90
 WATCHDOG_INTERVAL = 30
-TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
+
 
 # Global state
 last_heartbeat = datetime.now()
@@ -52,6 +54,7 @@ def status():
 
 def watchdog():
     global last_heartbeat
+    logger.info("Watchdog started")
     while True:
         time.sleep(WATCHDOG_INTERVAL)
         now = datetime.now()
@@ -136,5 +139,6 @@ def get_coordinates():
 
 
 if __name__ == "__main__":
+    threading.Thread(target=watchdog, daemon=True).start()
     logger.info(f"Running server at http://{get_ip_address()}:{overland_port}/dump")
     app.run(host="0.0.0.0", port=overland_port)
