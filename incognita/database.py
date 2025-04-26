@@ -97,20 +97,10 @@ def extract_properties_from_geojson(
     return geo_data_parsed
 
 
-def get_last_timestamp(db_filename: str = DB_FILE) -> pd.Timestamp:
-    with sqlite3.connect(db_filename) as conn:
-        cursor = conn.cursor()
-        query = f"SELECT MAX(timestamp) FROM {DB_NAME}"
-        cursor.execute(query)
-        return cursor.fetchone()[0]
-
-
 @timed
-@lru_cache()
 def fetch_coordinates(
     lookback_hours: int = 24,
     min_accuracy: float | None = None,
-    age_db: pd.Timestamp = get_last_timestamp(),
 ) -> list[tuple]:
     """Return coordinates from the specified lookback period sorted by timestamp.
 
@@ -139,12 +129,12 @@ def fetch_coordinates(
             FROM {DB_NAME}
             WHERE timestamp >= ? AND timestamp <= ?
         """
-        
+
         params = [start_time, end_time]
         if min_accuracy is not None:
             base_query += " AND horizontal_accuracy <= ?"
             params.append(min_accuracy)
-            
+
         base_query += " ORDER BY timestamp ASC"
         cursor.execute(base_query, params)
         coordinates = cursor.fetchall()

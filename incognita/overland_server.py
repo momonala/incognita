@@ -4,19 +4,40 @@ import logging
 import random
 import string
 import time
+from datetime import datetime
 
+import pandas as pd
+import requests
 from flask import Flask, jsonify, request
 
 from incognita.database import fetch_coordinates, update_db
-from incognita.utils import get_ip_address
 from incognita.processing import add_speed_to_gdf
-import pandas as pd
-overland_port = 5003
+from incognita.utils import get_ip_address
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+overland_port = 5003
+
+HEARTBEAT_TIMEOUT = 90
+WATCHDOG_INTERVAL = 30
+TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
+
+# Global state
+last_heartbeat = datetime.now()
+
+
+def send_telegram_alert():
+    message = "🚨 ALERT: No heartbeat received from Trace!"
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        print(f"Failed to send Telegram message: {e}")
 
 
 @app.route("/", methods=["GET"])
@@ -27,6 +48,26 @@ def root():
 @app.route("/status", methods=["GET"])
 def status():
     return jsonify({"status": "ok"})
+
+
+def watchdog():
+    global last_heartbeat
+    while True:
+        time.sleep(WATCHDOG_INTERVAL)
+        now = datetime.now()
+        if (now - last_heartbeat).total_seconds() > HEARTBEAT_TIMEOUT:
+            logger.warning("No recent heartbeat. Sending alert.")
+            send_telegram_alert()
+            # reset heartbeat to avoid spamming multiple alerts
+            last_heartbeat = now
+
+
+@app.route("/heartbeat", methods=["POST"])
+def heartbeat():
+    global last_heartbeat
+    last_heartbeat = datetime.now()
+    logger.info(f"Heartbeat received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}")
+    return jsonify({"status": "ok"}), 200
 
 
 @app.route("/dump", methods=["POST"])
@@ -74,8 +115,9 @@ def get_coordinates():
         coordinates = pd.DataFrame(coordinates, columns=["timestamp", "lat", "lon", "accuracy"])
         coordinates = add_speed_to_gdf(coordinates)
         coordinates = coordinates[coordinates["meters"] <= max_distance]
-        coordinates = [(row["timestamp"], row["lat"], row["lon"], row["accuracy"]) for _, row in coordinates.iterrows()]
-
+        coordinates = [
+            (row["timestamp"], row["lat"], row["lon"], row["accuracy"]) for _, row in coordinates.iterrows()
+        ]
 
         return jsonify(
             {
