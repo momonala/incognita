@@ -66,7 +66,7 @@ def watchdog():
             # reset heartbeat to avoid spamming multiple alerts
             # double timeout, but not more than 1 hour
             last_heartbeat = now
-            HEARTBEAT_TIMEOUT = max(2 * HEARTBEAT_TIMEOUT, 60 * 60)
+            HEARTBEAT_TIMEOUT = min(2 * HEARTBEAT_TIMEOUT, 60 * 60)
         else:
             # reset timeout to 90 seconds if heartbeat is received
             HEARTBEAT_TIMEOUT = 90
