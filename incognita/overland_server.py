@@ -25,8 +25,8 @@ app = Flask(__name__)
 overland_port = 5003
 
 # Heartbeat timeout in seconds
-HEARTBEAT_TIMEOUT = 5
-WATCHDOG_INTERVAL = 2
+HEARTBEAT_TIMEOUT = 90
+WATCHDOG_INTERVAL = 30
 
 # Global state
 last_heartbeat = datetime.now()
