@@ -5,10 +5,11 @@ import random
 import string
 import time
 from datetime import datetime
+from functools import wraps
 
 import pandas as pd
 import requests
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 import threading
 
 from incognita.database import fetch_coordinates, update_db
@@ -27,6 +28,19 @@ overland_port = 5003
 # Heartbeat timeout settings (seconds)
 HEARTBEAT_TIMEOUT = 60 * 3
 last_heartbeat = datetime.now()
+
+
+def log_payload_size(f):
+    """Decorator to log the size of the response payload in MB."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        response = f(*args, **kwargs)
+        if isinstance(response, Response):
+            payload_size = len(response.get_data())
+            payload_size_mb = payload_size / 1024 / 1024
+            logger.info(f"Response payload size: {payload_size_mb:.6f} MB")
+        return response
+    return decorated_function
 
 
 def send_telegram_alert():
@@ -76,6 +90,7 @@ def heartbeat():
 
 
 @app.route("/dump", methods=["POST"])
+@log_payload_size
 def dump():
     """Receive and store GPS GeoJSON raw_data from iPhone."""
     data = request.get_data()
@@ -91,6 +106,7 @@ def dump():
 
 
 @app.route("/coordinates", methods=["GET"])
+@log_payload_size
 def get_coordinates():
     """Return list of (timestamp, lat, lon) tuples from database.
 
