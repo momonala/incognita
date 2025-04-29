@@ -25,7 +25,7 @@ def get_coordinates(
     max_distance: float = MAX_DISTANCE_M,
 ) -> list[tuple[str, float, float]]:
     host = "http://localhost:5003"
-    # host = "https://full-primarily-weevil.ngrok-free.app/incognita"
+    # host = "https://trace.mnalavadi.org/mobile"
     response = requests.get(
         f"{host}/coordinates?lookback_hours={lookback_hours}&min_accuracy={min_accuracy}&max_distance={max_distance}"
     )

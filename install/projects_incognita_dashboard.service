@@ -5,7 +5,7 @@
  [Service]
  WorkingDirectory=/home/mnalavadi/incognita
  Type=idle
- ExecStart=/home/mnalavadi/miniconda3/envs/gps/bin/python -m incognita.app
+ ExecStart=/home/mnalavadi/miniconda3/envs/gps/bin/python -m app
  User=mnalavadi
 
  [Install]
