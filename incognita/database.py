@@ -131,8 +131,6 @@ def fetch_coordinates(
                 horizontal_accuracy
             FROM {DB_NAME}
             WHERE timestamp >= ? AND timestamp <= ?
-            AND activity != 'automotive'
-            AND motion != 'driving'
             AND speed > 0
         """
 

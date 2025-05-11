@@ -28,6 +28,7 @@ overland_port = 5003
 # Heartbeat timeout settings (seconds)
 HEARTBEAT_TIMEOUT = 60 * 3
 last_heartbeat = datetime.now()
+is_heartbeat_down = False  # Track heartbeat state
 
 
 def log_payload_size(f):
@@ -43,9 +44,8 @@ def log_payload_size(f):
     return decorated_function
 
 
-def send_telegram_alert():
+def send_telegram_alert(message: str):
     """Send alert message with current backoff status."""
-    message = f"🪦 No heartbeat in last {round(HEARTBEAT_TIMEOUT/60, 1)} minutes!\nLast received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
     
@@ -67,17 +67,25 @@ def status():
 
 
 def watchdog():
-    global last_heartbeat, HEARTBEAT_TIMEOUT
+    global last_heartbeat, HEARTBEAT_TIMEOUT, is_heartbeat_down
     logger.info("Watchdog started")
     while True:
         time.sleep(HEARTBEAT_TIMEOUT)
         now = datetime.now()
         if (now - last_heartbeat).total_seconds() > HEARTBEAT_TIMEOUT:
-            send_telegram_alert()
+            if not is_heartbeat_down:  # Only send alert if state changed
+                message = f"🪦 No heartbeat in last {round(HEARTBEAT_TIMEOUT/60, 1)} minutes!\nLast received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+                send_telegram_alert(message)
+                is_heartbeat_down = True
             # avoid spamming multiple alerts - double timeout, but not more than 1 hour
             HEARTBEAT_TIMEOUT *= 2
             HEARTBEAT_TIMEOUT = min(HEARTBEAT_TIMEOUT, 60 * 60)
         else:
+            if is_heartbeat_down:  # Only send recovery message if state changed
+                downtime = (now - last_heartbeat).total_seconds() / 60
+                message = f"💚 Heartbeat recovered!\nDowntime: {downtime:.1f} minutes\nLast heartbeat: {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+                send_telegram_alert(message)
+                is_heartbeat_down = False
             # reset timeout to 3 minutes if heartbeat is received
             HEARTBEAT_TIMEOUT = 60 * 3
 
