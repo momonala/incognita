@@ -79,6 +79,8 @@ def extract_properties_from_geojson(
     geo_data_parsed = []
     for d in geo_data:
         try:
+            motion = d["properties"].get("motion", [])
+            motion = motion[0] if motion else None
             geo_data_parsed.append(
                 {
                     "lon": d["geometry"]["coordinates"][0],
@@ -87,11 +89,12 @@ def extract_properties_from_geojson(
                     "speed": d["properties"].get("speed"),
                     "altitude": d["properties"].get("altitude"),
                     "horizontal_accuracy": d["properties"].get("horizontal_accuracy"),
+                    "motion": motion,
                     "geojson_file": d["geojson_file"],
                 }
             )
         except KeyError:
-            logger.error(f"ERROR skipping row {d}")
+            logger.exception(f"ERROR skipping row {d}")
             continue
 
     return geo_data_parsed
@@ -128,6 +131,9 @@ def fetch_coordinates(
                 horizontal_accuracy
             FROM {DB_NAME}
             WHERE timestamp >= ? AND timestamp <= ?
+            AND activity != 'automotive'
+            AND motion != 'driving'
+            AND speed > 0
         """
 
         params = [start_time, end_time]
