@@ -4,7 +4,7 @@ import logging
 import random
 import string
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 
 import pandas as pd
@@ -26,9 +26,28 @@ app = Flask(__name__)
 overland_port = 5003
 
 # Heartbeat timeout settings (seconds)
-HEARTBEAT_TIMEOUT = 60 * 3
+HEARTBEAT_TIMEOUT_DEFAULT = 60 * 3
+HEARTBEAT_TIMEOUT = HEARTBEAT_TIMEOUT_DEFAULT
 last_heartbeat = datetime.now()
 is_heartbeat_down = False  # Track heartbeat state
+last_alert_time = None  # Track when we last sent an alert
+heartbeat_down_time = None  # Track when heartbeat first went down
+
+
+def format_downtime(seconds: float) -> str:
+    """Format seconds into human readable format based on duration."""
+    td = timedelta(seconds=int(seconds))
+    days = td.days
+    hours = td.seconds // 3600
+    minutes = (td.seconds % 3600) // 60
+    seconds = td.seconds % 60
+
+    if days > 0:
+        return f"{days}d, {hours}h, {minutes}m, {seconds}s"
+    elif hours > 0:
+        return f"{hours}h, {minutes}m, {seconds}s"
+    else:
+        return f"{minutes}m, {seconds}s"
 
 
 def log_payload_size(f):
@@ -67,27 +86,41 @@ def status():
 
 
 def watchdog():
-    global last_heartbeat, HEARTBEAT_TIMEOUT, is_heartbeat_down
+    global last_heartbeat, HEARTBEAT_TIMEOUT, is_heartbeat_down, last_alert_time, heartbeat_down_time
     logger.info("Watchdog started")
+    
     while True:
-        time.sleep(HEARTBEAT_TIMEOUT)
+        time.sleep(1)  # Check every second
         now = datetime.now()
-        if (now - last_heartbeat).total_seconds() > HEARTBEAT_TIMEOUT:
-            if not is_heartbeat_down:  # Only send alert if state changed
-                message = f"🪦 No heartbeat in last {round(HEARTBEAT_TIMEOUT/60, 1)} minutes!\nLast received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
-                send_telegram_alert(message)
+        time_since_heartbeat = (now - last_heartbeat).total_seconds()
+        
+        # Check if heartbeat is down
+        if time_since_heartbeat > HEARTBEAT_TIMEOUT:
+            # State changed to down
+            if not is_heartbeat_down:
                 is_heartbeat_down = True
-            # avoid spamming multiple alerts - double timeout, but not more than 1 hour
-            HEARTBEAT_TIMEOUT *= 2
-            HEARTBEAT_TIMEOUT = min(HEARTBEAT_TIMEOUT, 60 * 60)
+                heartbeat_down_time = now - timedelta(seconds=HEARTBEAT_TIMEOUT)
+                last_alert_time = now
+                downtime = (now - heartbeat_down_time).total_seconds()
+                message = f"🪦 No heartbeat for {format_downtime(downtime)}!\nLast received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+                send_telegram_alert(message)
+            # Send follow-up alert if enough time has passed
+            elif last_alert_time and (now - last_alert_time).total_seconds() >= HEARTBEAT_TIMEOUT:
+                downtime = (now - heartbeat_down_time).total_seconds()
+                last_alert_time = now
+                message = f"🪦 No heartbeat for {format_downtime(downtime)}!\nLast received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+                send_telegram_alert(message)
+                # Increase timeout for next alert
+                HEARTBEAT_TIMEOUT = min(HEARTBEAT_TIMEOUT * 2, 60 * 60)
         else:
-            if is_heartbeat_down:  # Only send recovery message if state changed
-                downtime = (now - last_heartbeat).total_seconds() / 60
-                message = f"💚 Heartbeat recovered!\nDowntime: {downtime:.1f} minutes\nLast heartbeat: {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+            if is_heartbeat_down:  # State changed to up
+                downtime = (now - heartbeat_down_time).total_seconds()
+                message = f"💚 Heartbeat recovered!\nDowntime: {format_downtime(downtime)}\nLast heartbeat: {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
                 send_telegram_alert(message)
                 is_heartbeat_down = False
-            # reset timeout to 3 minutes if heartbeat is received
-            HEARTBEAT_TIMEOUT = 60 * 3
+                heartbeat_down_time = None
+                last_alert_time = None
+                HEARTBEAT_TIMEOUT = HEARTBEAT_TIMEOUT_DEFAULT  # Reset timeout
 
 
 @app.route("/heartbeat", methods=["POST"])
