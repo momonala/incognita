@@ -11,7 +11,7 @@ from incognita.data_models import GeoBoundingBox, GeoCoords
 
 logger = logging.getLogger(__name__)
 
-disk_memory = Memory("cache")
+disk_memory = Memory(".cache")
 
 
 def get_ip_address() -> str:
