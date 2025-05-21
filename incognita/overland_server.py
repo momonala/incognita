@@ -20,13 +20,14 @@ from incognita.values import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 app = Flask(__name__)
 
 overland_port = 5003
 
 # Heartbeat timeout settings (seconds)
-HEARTBEAT_TIMEOUT_DEFAULT = 60 * 3
+HEARTBEAT_TIMEOUT_DEFAULT = 60
 HEARTBEAT_TIMEOUT = HEARTBEAT_TIMEOUT_DEFAULT
 last_heartbeat = datetime.now()
 is_heartbeat_down = False  # Track heartbeat state

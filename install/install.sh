@@ -8,10 +8,10 @@ if ! conda env list | grep -q "^$service_name\s"; then
     conda create -n $service_name python=$python_version -y
 else
     echo "Conda environment '$service_name' already exists. Skipping creation."
-    source /home/mnalavadi/miniconda3/etc/profile.d/conda.sh
 fi
 
 echo "Activating conda environment: $service_name"
+source /home/mnalavadi/miniconda3/etc/profile.d/conda.sh
 conda activate $service_name
 
 echo "Installing required Python packages"
