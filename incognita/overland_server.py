@@ -1,22 +1,22 @@
 """Basic HTTP server to receive and store GPS raw_data from iPhone Overland app."""
 
+import bisect
 import logging
 import random
 import string
+import threading
 import time
 from datetime import datetime, timedelta
 from functools import wraps
 
 import pandas as pd
 import requests
-from flask import Flask, jsonify, request, Response
-import threading
+from flask import Flask, Response, jsonify, request
 
 from incognita.database import fetch_coordinates, update_db
 from incognita.processing import add_speed_to_gdf
 from incognita.utils import get_ip_address
-from incognita.values import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-
+from incognita.values import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
@@ -25,14 +25,7 @@ logging.getLogger("werkzeug").setLevel(logging.WARNING)
 app = Flask(__name__)
 
 overland_port = 5003
-
-# Heartbeat timeout settings (seconds)
-HEARTBEAT_TIMEOUT_DEFAULT = 60
-HEARTBEAT_TIMEOUT = HEARTBEAT_TIMEOUT_DEFAULT
 last_heartbeat = datetime.now()
-is_heartbeat_down = False  # Track heartbeat state
-last_alert_time = None  # Track when we last sent an alert
-heartbeat_down_time = None  # Track when heartbeat first went down
 
 
 def format_downtime(seconds: float) -> str:
@@ -53,6 +46,7 @@ def format_downtime(seconds: float) -> str:
 
 def log_payload_size(f):
     """Decorator to log the size of the response payload in MB."""
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         response = f(*args, **kwargs)
@@ -61,6 +55,7 @@ def log_payload_size(f):
             payload_size_mb = payload_size / 1024 / 1024
             logger.info(f"Response payload size: {payload_size_mb:.6f} MB")
         return response
+
     return decorated_function
 
 
@@ -68,7 +63,7 @@ def send_telegram_alert(message: str):
     """Send alert message with current backoff status."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-    
+
     try:
         requests.post(url, json=payload, timeout=10)
         logger.info(f"{message}. Telegram alert sent.")
@@ -87,41 +82,44 @@ def status():
 
 
 def watchdog():
-    global last_heartbeat, HEARTBEAT_TIMEOUT, is_heartbeat_down, last_alert_time, heartbeat_down_time
-    logger.info("Watchdog started")
-    
+    # Schedule in seconds: 1m, 5m, 30m, 60m
+    alert_schedule = [60, 300, 600, 3600]
+    next_alert = alert_schedule[0]
+    is_down = False
+    logger.info(f"Watchdog started with {alert_schedule=}")
+
+    def _get_next_alert(current: int) -> int:
+        # Get next alert time by cycling through schedule
+        if current < alert_schedule[-1]:
+            idx = bisect.bisect_right(alert_schedule, current)
+            return alert_schedule[idx] if idx < len(alert_schedule) else current + 3600
+        return current + 3600
+
     while True:
-        time.sleep(1)  # Check every second
+        time.sleep(1)
         now = datetime.now()
-        time_since_heartbeat = (now - last_heartbeat).total_seconds()
-        
-        # Check if heartbeat is down
-        if time_since_heartbeat > HEARTBEAT_TIMEOUT:
-            # State changed to down
-            if not is_heartbeat_down:
-                is_heartbeat_down = True
-                heartbeat_down_time = now - timedelta(seconds=HEARTBEAT_TIMEOUT)
-                last_alert_time = now
-                downtime = (now - heartbeat_down_time).total_seconds()
-                message = f"🪦 No heartbeat for {format_downtime(downtime)}!\nLast received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
-                send_telegram_alert(message)
-            # Send follow-up alert if enough time has passed
-            elif last_alert_time and (now - last_alert_time).total_seconds() >= HEARTBEAT_TIMEOUT:
-                downtime = (now - heartbeat_down_time).total_seconds()
-                last_alert_time = now
-                message = f"🪦 No heartbeat for {format_downtime(downtime)}!\nLast received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
-                send_telegram_alert(message)
-                # Increase timeout for next alert
-                HEARTBEAT_TIMEOUT = min(HEARTBEAT_TIMEOUT * 2, 60 * 60)
-        else:
-            if is_heartbeat_down:  # State changed to up
-                downtime = (now - heartbeat_down_time).total_seconds()
-                message = f"💚 Heartbeat recovered!\nDowntime: {format_downtime(downtime)}\nLast heartbeat: {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
-                send_telegram_alert(message)
-                is_heartbeat_down = False
-                heartbeat_down_time = None
-                last_alert_time = None
-                HEARTBEAT_TIMEOUT = HEARTBEAT_TIMEOUT_DEFAULT  # Reset timeout
+        heartbeat_down_time = now - last_heartbeat
+        downtime_sec = int(heartbeat_down_time.total_seconds())
+        logger.debug(f"Downtime(s): {downtime_sec:<10} Next Alert(s): {next_alert:<10} {is_down=}")
+
+        if downtime_sec >= next_alert:
+            message = (
+                f"🪦 No heartbeat for {format_downtime(downtime_sec)}!\n"
+                f"Last received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            send_telegram_alert(message)
+            is_down = True
+            next_alert = _get_next_alert(next_alert)
+
+        elif downtime_sec < alert_schedule[0] and is_down:
+            message = (
+                f"💚 Heartbeat recovered!\n"
+                f"Downtime: {format_downtime(downtime_sec)}\n"
+                f"Last heartbeat: {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            send_telegram_alert(message)
+            next_alert = alert_schedule[0]
+            is_down = False
 
 
 @app.route("/heartbeat", methods=["POST"])
@@ -199,8 +197,6 @@ def get_coordinates():
 
 
 if __name__ == "__main__":
-    logger.info(f"Starting Watchdog Heartbeat timer.")
-    logger.info(f"Timeout: {HEARTBEAT_TIMEOUT} seconds.")
     threading.Thread(target=watchdog, daemon=True).start()
     logger.info(f"Running server at http://{get_ip_address()}:{overland_port}")
     app.run(host="0.0.0.0", port=overland_port)
