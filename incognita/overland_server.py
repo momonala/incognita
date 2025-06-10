@@ -61,6 +61,11 @@ def log_payload_size(f):
 
 def send_telegram_alert(message: str):
     """Send alert message with current backoff status."""
+    # if time between 11pm and 7am, don't send alerts
+    if datetime.now().hour < 7 or datetime.now().hour > 23:
+        logger.info("🌙 Skipping alert because it's sleepy time!")
+        return
+
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
 
