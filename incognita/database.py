@@ -10,7 +10,7 @@ from incognita.utils import timed
 logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DB_FILE = "cache/geo_data.db"
+DB_FILE = ".cache/geo_data.db"
 DB_NAME = "overland"
 
 MIN_HORIZONTAL_ACCURACY = 200.0

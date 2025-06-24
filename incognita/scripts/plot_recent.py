@@ -7,6 +7,7 @@ from joblib import Memory
 
 from incognita.database import fetch_coordinates
 from incognita.processing import add_speed_to_gdf
+from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
 
 memory = Memory(".cache")
 
@@ -24,8 +25,8 @@ def get_coordinates(
     min_accuracy: float = MIN_ACCURACY_M,
     max_distance: float = MAX_DISTANCE_M,
 ) -> list[tuple[str, float, float]]:
-    host = "http://localhost:5003"
-    # host = "https://trace.mnalavadi.org/mobile"
+    # host = "http://localhost:5003"
+    host = "https://trace.mnalavadi.org"
     response = requests.get(
         f"{host}/coordinates?lookback_hours={lookback_hours}&min_accuracy={min_accuracy}&max_distance={max_distance}"
     )
@@ -88,7 +89,9 @@ def create_deck_map(df: pd.DataFrame) -> pdk.Deck:
 
     # Combine layers in a deck
     deck = pdk.Deck(
-        map_style="light",
+        # map_style="light",
+        api_keys={"mapbox": MAPBOX_API_KEY, "google_maps": GOOGLE_MAPS_API_KEY},
+        map_provider="mapbox",
         layers=[normal_layer, jumps_layer],  # normal lines first, then jumps
         initial_view_state=view_state,
         tooltip={
@@ -129,7 +132,7 @@ def create_deck_map(df: pd.DataFrame) -> pdk.Deck:
 
 def main():
     """Fetch data and create visualization."""
-    use_api = True
+    use_api = False
     if use_api:
         coordinates = get_coordinates(
             lookback_hours=LOOKBACK_HOURS, min_accuracy=MIN_ACCURACY_M, max_distance=MAX_DISTANCE_M
@@ -140,6 +143,11 @@ def main():
         coordinates = fetch_coordinates(lookback_hours=LOOKBACK_HOURS, min_accuracy=MIN_ACCURACY_M)
         coordinates = pd.DataFrame(coordinates, columns=["timestamp", "lat", "lon", "accuracy"])
     coordinates = add_speed_to_gdf(coordinates)
+    # Convert timestamp to datetime and filter for June 14, 2025
+    coordinates['timestamp'] = pd.to_datetime(coordinates['timestamp'])
+    coordinates = coordinates[coordinates['timestamp'].dt.date == pd.to_datetime('2025-06-11').date()]
+    
+    # Display the filtered data
     deck = create_deck_map(coordinates)
     output_file = f"recent_locations.html"
     deck.to_html(output_file, open_browser=True)

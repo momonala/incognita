@@ -9,7 +9,7 @@ from incognita.database import create_timestamp_index, update_db
 logger = logging.getLogger("incognita.database")
 logger.setLevel(logging.WARNING)
 
-DB_FILE = "cache/geo_data.db"
+DB_FILE = ".cache/geo_data.db"
 
 if os.path.exists(DB_FILE):
     os.remove(DB_FILE)
