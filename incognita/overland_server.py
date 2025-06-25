@@ -27,6 +27,10 @@ app = Flask(__name__)
 overland_port = 5003
 last_heartbeat = datetime.now()
 
+# Global list to store message IDs and their timestamps for cleanup
+message_cleanup_queue: list[tuple[int, datetime]] = []
+message_cleanup_lock = threading.Lock()
+
 
 def format_downtime(seconds: float) -> str:
     """Format seconds into human readable format based on duration."""
@@ -70,10 +74,54 @@ def send_telegram_alert(message: str):
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
 
     try:
-        requests.post(url, json=payload, timeout=10)
-        logger.info(f"{message}. Telegram alert sent.")
+        response = requests.post(url, json=payload, timeout=10)
+        response_data = response.json()
+        
+        if response_data.get("ok") and "result" in response_data:
+            message_id = response_data["result"]["message_id"]
+            with message_cleanup_lock:
+                message_cleanup_queue.append((message_id, datetime.now()))
+            logger.info(f"{message}. Telegram alert sent with ID: {message_id}")
+        else:
+            logger.error(f"Failed to send Telegram message: {response_data}")
     except Exception as e:
         logger.error(f"Failed to send Telegram message: {e}")
+
+
+def message_cleanup_worker():
+    """Background thread to delete old Telegram messages."""
+    logger.info("🧹 Message cleanup worker started")
+    
+    while True:
+        try:
+            time.sleep(60)  # Check every minute
+            now = datetime.now()
+            messages_to_delete = []
+            
+            with message_cleanup_lock:
+                # Find messages older than 10 minutes
+                for message_id, timestamp in message_cleanup_queue[:]:
+                    if (now - timestamp).total_seconds() > 300:  # 5 minutes
+                        messages_to_delete.append(message_id)
+                        message_cleanup_queue.remove((message_id, timestamp))
+            
+            # Delete old messages
+            for message_id in messages_to_delete:
+                delete_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteMessage"
+                payload = {"chat_id": TELEGRAM_CHAT_ID, "message_id": message_id}
+                
+                try:
+                    response = requests.post(delete_url, json=payload, timeout=10)
+                    if response.json().get("ok"):
+                        logger.debug(f"🗑️ Deleted message {message_id}")
+                    else:
+                        logger.warning(f"Failed to delete message {message_id}: {response.json()}")
+                except Exception as e:
+                    logger.error(f"Error deleting message {message_id}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error in message cleanup worker: {e}")
+            time.sleep(60)  # Wait before retrying
 
 
 @app.route("/", methods=["GET"])
@@ -203,5 +251,6 @@ def get_coordinates():
 
 if __name__ == "__main__":
     threading.Thread(target=watchdog, daemon=True).start()
+    threading.Thread(target=message_cleanup_worker, daemon=True).start()
     logger.info(f"Running server at http://{get_ip_address()}:{overland_port}")
     app.run(host="0.0.0.0", port=overland_port)
