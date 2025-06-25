@@ -1,5 +1,6 @@
 """Basic HTTP server to receive and store GPS raw_data from iPhone Overland app."""
 
+import bisect
 import logging
 import random
 import string
@@ -9,12 +10,13 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 import pandas as pd
+import requests
 from flask import Flask, Response, jsonify, request
 
 from incognita.database import fetch_coordinates, update_db
 from incognita.processing import add_speed_to_gdf
 from incognita.utils import get_ip_address
-from incognita.telegram import update_daily_summary
+from incognita.values import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
@@ -24,6 +26,22 @@ app = Flask(__name__)
 
 overland_port = 5003
 last_heartbeat = datetime.now()
+
+
+def format_downtime(seconds: float) -> str:
+    """Format seconds into human readable format based on duration."""
+    td = timedelta(seconds=int(seconds))
+    days = td.days
+    hours = td.seconds // 3600
+    minutes = (td.seconds % 3600) // 60
+    seconds = td.seconds % 60
+
+    if days > 0:
+        return f"{days}d, {hours}h, {minutes}m, {seconds}s"
+    elif hours > 0:
+        return f"{hours}h, {minutes}m, {seconds}s"
+    else:
+        return f"{minutes}m, {seconds}s"
 
 
 def log_payload_size(f):
@@ -40,6 +58,22 @@ def log_payload_size(f):
 
     return decorated_function
 
+
+def send_telegram_alert(message: str):
+    """Send alert message with current backoff status."""
+    # if time between 11pm and 7am, don't send alerts
+    if datetime.now().hour < 7 or datetime.now().hour > 23:
+        logger.info("🌙 Skipping alert because it's sleepy time!")
+        return
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
+
+    try:
+        requests.post(url, json=payload, timeout=10)
+        logger.info(f"{message}. Telegram alert sent.")
+    except Exception as e:
+        logger.error(f"Failed to send Telegram message: {e}")
 
 
 @app.route("/", methods=["GET"])
@@ -59,33 +93,36 @@ def watchdog():
     is_down = False
     logger.info(f"Watchdog started with {alert_schedule=}")
 
+    def _get_next_alert(current: int) -> int:
+        # Get next alert time by cycling through schedule
+        if current < alert_schedule[-1]:
+            idx = bisect.bisect_right(alert_schedule, current)
+            return alert_schedule[idx] if idx < len(alert_schedule) else current + 3600
+        return current + 3600
+
     while True:
         time.sleep(1)
         now = datetime.now()
         heartbeat_down_time = now - last_heartbeat
         downtime_sec = int(heartbeat_down_time.total_seconds())
-        
-        # Log every 30 seconds to see what's happening
-        if downtime_sec % 30 == 0:
-            logger.debug(f"Watchdog status - Downtime: {downtime_sec}s, Next alert: {next_alert}s, Is down: {is_down}")
-        
-        if downtime_sec >= next_alert:
-            logger.debug(f"🚨 Alert triggered! Downtime: {downtime_sec}s, Next alert was: {next_alert}s")
-            # Track heartbeat loss event
-            if not is_down:  # Only track when first going down
-                logger.debug("📱 Sending heartbeat lost event to daily summary")
-                update_daily_summary("lost", last_heartbeat)
-            is_down = True
+        logger.debug(f"Downtime(s): {downtime_sec:<10} Next Alert(s): {next_alert:<10} {is_down=}")
 
-            # Get next alert time by cycling through schedule
-            current_idx = alert_schedule.index(next_alert)
-            next_alert = alert_schedule[(current_idx + 1) % len(alert_schedule)]
-            logger.debug(f"Next alert scheduled for: {next_alert}s")
+        if downtime_sec >= next_alert:
+            message = (
+                f"🪦 No heartbeat for {format_downtime(downtime_sec)}!\n"
+                f"Last received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            send_telegram_alert(message)
+            is_down = True
+            next_alert = _get_next_alert(next_alert)
 
         elif downtime_sec < alert_schedule[0] and is_down:
-            logger.info(f"💚 Heartbeat recovered! Downtime was: {downtime_sec}s")
-            # Track heartbeat recovery event
-            update_daily_summary("recovered", last_heartbeat, downtime_sec)
+            message = (
+                f"💚 Heartbeat recovered!\n"
+                f"Downtime: {format_downtime(downtime_sec)}\n"
+                f"Last heartbeat: {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            send_telegram_alert(message)
             next_alert = alert_schedule[0]
             is_down = False
 
@@ -94,18 +131,7 @@ def watchdog():
 def heartbeat():
     global last_heartbeat
     last_heartbeat = datetime.now()
-    logger.debug(f"💓 Heartbeat received at {last_heartbeat.strftime('%H:%M:%S')}")
     return jsonify({"status": "ok"}), 200
-
-
-@app.route("/test-heartbeat-lost", methods=["POST"])
-def test_heartbeat_lost():
-    """Test endpoint to simulate a heartbeat loss event."""
-    global last_heartbeat
-    # Set last_heartbeat to 2 minutes ago to trigger the alert
-    last_heartbeat = datetime.now() - timedelta(minutes=2)
-    logger.info("🧪 Test: Set last_heartbeat to 2 minutes ago to trigger alert")
-    return jsonify({"status": "test_triggered", "last_heartbeat": last_heartbeat.isoformat()}), 200
 
 
 @app.route("/dump", methods=["POST"])
