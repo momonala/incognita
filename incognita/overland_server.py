@@ -1,6 +1,5 @@
 """Basic HTTP server to receive and store GPS raw_data from iPhone Overland app."""
 
-import bisect
 import logging
 import random
 import string
@@ -88,42 +87,6 @@ def send_telegram_alert(message: str):
         logger.error(f"Failed to send Telegram message: {e}")
 
 
-def message_cleanup_worker():
-    """Background thread to delete old Telegram messages."""
-    logger.info("🧹 Message cleanup worker started")
-    
-    while True:
-        try:
-            time.sleep(60)  # Check every minute
-            now = datetime.now()
-            messages_to_delete = []
-            
-            with message_cleanup_lock:
-                # Find messages older than 10 minutes
-                for message_id, timestamp in message_cleanup_queue[:]:
-                    if (now - timestamp).total_seconds() > 300:  # 5 minutes
-                        messages_to_delete.append(message_id)
-                        message_cleanup_queue.remove((message_id, timestamp))
-            
-            # Delete old messages
-            for message_id in messages_to_delete:
-                delete_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteMessage"
-                payload = {"chat_id": TELEGRAM_CHAT_ID, "message_id": message_id}
-                
-                try:
-                    response = requests.post(delete_url, json=payload, timeout=10)
-                    if response.json().get("ok"):
-                        logger.debug(f"🗑️ Deleted message {message_id}")
-                    else:
-                        logger.warning(f"Failed to delete message {message_id}: {response.json()}")
-                except Exception as e:
-                    logger.error(f"Error deleting message {message_id}: {e}")
-                    
-        except Exception as e:
-            logger.error(f"Error in message cleanup worker: {e}")
-            time.sleep(60)  # Wait before retrying
-
-
 @app.route("/", methods=["GET"])
 def root():
     return jsonify({"status": "ok"})
@@ -135,43 +98,90 @@ def status():
 
 
 def watchdog():
-    # Schedule in seconds: 1m, 5m, 30m, 60m
-    alert_schedule = [60, 300, 600, 3600]
-    next_alert = alert_schedule[0]
     is_down = False
-    logger.info(f"Watchdog started with {alert_schedule=}")
+    current_message_id = None
+    last_update = datetime.now()
+    logger.info("Watchdog started with minute-based updates")
 
-    def _get_next_alert(current: int) -> int:
-        # Get next alert time by cycling through schedule
-        if current < alert_schedule[-1]:
-            idx = bisect.bisect_right(alert_schedule, current)
-            return alert_schedule[idx] if idx < len(alert_schedule) else current + 3600
-        return current + 3600
+    def _update_message(message_id: int, message: str):
+        """Update existing message silently."""
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "message_id": message_id,
+            "text": message
+        }
+        
+        try:
+            response = requests.post(url, json=payload, timeout=10)
+            if response.json().get("ok"):
+                logger.debug(f"📝 Updated message {message_id}")
+            else:
+                logger.warning(f"Failed to update message {message_id}: {response.json()}")
+        except Exception as e:
+            logger.error(f"Error updating message {message_id}: {e}")
+
+    def _delete_message(message_id: int):
+        """Delete message and remove from cleanup queue."""
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteMessage"
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "message_id": message_id}
+        
+        try:
+            response = requests.post(url, json=payload, timeout=10)
+            if response.json().get("ok"):
+                logger.info(f"🗑️ Deleted message {message_id}")
+                # Remove from cleanup queue if present
+                with message_cleanup_lock:
+                    message_cleanup_queue[:] = [(mid, ts) for mid, ts in message_cleanup_queue if mid != message_id]
+            else:
+                logger.warning(f"Failed to delete message {message_id}: {response.json()}")
+        except Exception as e:
+            logger.error(f"Error deleting message {message_id}: {e}")
 
     while True:
         time.sleep(1)
         now = datetime.now()
         heartbeat_down_time = now - last_heartbeat
         downtime_sec = int(heartbeat_down_time.total_seconds())
-        logger.debug(f"Downtime(s): {downtime_sec:<10} Next Alert(s): {next_alert:<10} {is_down=}")
+        logger.debug(f"Downtime(s): {downtime_sec:<10} {is_down=}")
 
-        if downtime_sec >= next_alert:
-            message = (
-                f"🪦 No heartbeat for {format_downtime(downtime_sec)}!\n"
-                f"Last received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-            send_telegram_alert(message)
-            is_down = True
-            next_alert = _get_next_alert(next_alert)
+        if downtime_sec >= 60:  # Alert after 1 minute of downtime
+            if not is_down:
+                # First time going down - create new message
+                message = (
+                    f"🪦 No heartbeat for {format_downtime(downtime_sec)}!\n"
+                    f"Last received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+                send_telegram_alert(message)
+                # Get the message ID from the last sent message
+                with message_cleanup_lock:
+                    if message_cleanup_queue:
+                        current_message_id = message_cleanup_queue[-1][0]
+                is_down = True
+                last_update = now
+            else:
+                # Already down - update existing message every minute
+                if (now - last_update).total_seconds() >= 60:
+                    message = (
+                        f"🪦 No heartbeat for {format_downtime(downtime_sec)}!\n"
+                        f"Last received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+                    if current_message_id:
+                        _update_message(current_message_id, message)
+                    last_update = now
 
-        elif downtime_sec < alert_schedule[0] and is_down:
+        elif downtime_sec < 60 and is_down:
+            # Heartbeat recovered - delete the current message
+            if current_message_id:
+                _delete_message(current_message_id)
+                current_message_id = None
+            
             message = (
                 f"💚 Heartbeat recovered!\n"
                 f"Downtime: {format_downtime(downtime_sec)}\n"
                 f"Last heartbeat: {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
             )
             send_telegram_alert(message)
-            next_alert = alert_schedule[0]
             is_down = False
 
 
@@ -251,6 +261,5 @@ def get_coordinates():
 
 if __name__ == "__main__":
     threading.Thread(target=watchdog, daemon=True).start()
-    threading.Thread(target=message_cleanup_worker, daemon=True).start()
     logger.info(f"Running server at http://{get_ip_address()}:{overland_port}")
     app.run(host="0.0.0.0", port=overland_port)
