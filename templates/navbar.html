@@ -1,0 +1,15 @@
+<nav>
+    <a href="/">Incognita</a>
+    <a href="/flights">Flights</a>
+    <a href="/gps">GPS</a>
+    <a href="/passport">Passport</a>
+</nav>
+
+<script>
+$(document).ready(function() {
+    $('nav a').on('click', function() {
+        $('nav a').removeClass('active');
+        $(this).addClass('active');
+    });
+});
+</script>

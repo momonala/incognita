@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Incognita</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+</head>
+
+<body>
+    {% include 'navbar.html' %}
+
+    <div class="center-container">
+        <div class="date-container">
+            <form id="date_form" action="/gps" method="post">
+                <label for="start_date">Start Date:</label>
+                <input type="text" id="start_date" name="start_date">
+                <label for="end_date">End Date:</label>
+                <input type="text" id="end_date" name="end_date">
+                <button type="submit" id="submit_button" class="submit-button">Submit</button>
+            </form>
+        </div>
+    </div>
+
+    </div>
+    <h2>Showing GPS data between:</h2>
+    <p>{{ start_date }} and {{ end_date }}</p>
+    <div class="map-container-gps">
+        <iframe src="{{ map_filename }}" style="border:0;" loading="lazy"></iframe>
+    </div>
+
+</body>
+
+<script>
+    $(function () {
+        $("#start_date").datepicker({
+            dateFormat: 'yy-mm-dd'
+        });
+        $("#end_date").datepicker({
+            dateFormat: 'yy-mm-dd'
+        });
+
+        // Listen for keydown event on input fields
+        $("#start_date, #end_date").on("keydown", function(event) {
+            if (event.which === 13) { // Enter key
+                $("#date_form").submit();
+            }
+        });
+    });
+</script>
+
+
+</html>

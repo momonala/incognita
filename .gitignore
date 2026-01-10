@@ -1,0 +1,112 @@
+# Compiled Python files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+# Package management and build artifacts
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.pytest_cache/
+.hypothesis/
+
+# Jupyter/IPython
+.ipynb_checkpoints/
+*.ipynb
+.ipython/
+.jupyter/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.dir-locals.el
+.envrc
+
+# Cache and temporary files
+.cache/
+tmp/
+temp/
+*.session
+dump.rdb
+joblib_cache/
+
+# Coverage and testing
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+reports/
+*/.hypothesis/**
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Secrets and credentials
+values.py
+google_application_credentials.json
+*.pem
+*.key
+.env
+.env.local
+secrets/
+
+# Database files (in data directories)
+data/*.sqlite
+data/*.sqlite3
+raw_data/*.db
+raw_data/*.sqlite
+raw_data/*.sqlite3
+
+# SQLite WAL (Write-Ahead Logging) temporary files
+*.db-wal
+*.db-shm
+
+# Data directories (ignore all files within)
+raw_data/
+
+# Media files
+*.mp4
+*.mp3
+*.avi
+*.mov
+
+# Project-specific generated files
+prototyping/
+cache/
+event_cache.json
+app_calendar_events.json
+recent_locations.html
+static/*.html
+
+# Local development
+.local/
+.ipython/
+!data/geo_data.db
+.git.backup
+!data/geo_data.db

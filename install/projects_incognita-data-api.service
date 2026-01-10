@@ -1,0 +1,12 @@
+[Unit]
+ Description=Incognita Overland Server
+ After=multi-user.target
+
+[Service]
+WorkingDirectory=/home/mnalavadi/incognita
+Type=idle
+ExecStart=/home/mnalavadi/.local/bin/uv run -m incognita.data_api
+User=mnalavadi
+
+ [Install]
+ WantedBy=multi-user.target
