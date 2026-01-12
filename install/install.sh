@@ -1,7 +1,7 @@
 service_name="incognita"
 
 # Service names
-prefix="projects_incognita-"
+prefix="projects_incognita_"
 data_api_service="${prefix}data-api"
 dashboard_service="${prefix}dashboard"
 backup_scheduler_service="${prefix}data-backup-scheduler"

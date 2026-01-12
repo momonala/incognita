@@ -271,16 +271,16 @@ python -m incognita.scripts.plot_recent
 Service files in `install/` directory:
 
 - `projects_data-api.service` - Data API server (port 5003)
-- `projects_incognita-dashboard.service` - Web dashboard (port 5004)
-- `projects_incognita-data-backup-scheduler.service` - Git backup scheduler
+- `projects_incognita_dashboard.service` - Web dashboard (port 5004)
+- `projects_incognita_data-backup-scheduler.service` - Git backup scheduler
 
 ```bash
 sudo cp install/*.service /etc/systemd/system/
 sudo systemctl enable projects_data-api.service
-sudo systemctl enable projects_incognita-dashboard.service
-sudo systemctl enable projects_incognita-data-backup-scheduler.service
+sudo systemctl enable projects_incognita_dashboard.service
+sudo systemctl enable projects_incognita_data-backup-scheduler.service
 sudo systemctl start projects_data-api.service
-sudo systemctl start projects_incognita-dashboard.service
+sudo systemctl start projects_incognita_dashboard.service
 sudo systemctl start projects_incognita-data-backup-scheduler.service
 ```
 
