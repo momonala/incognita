@@ -4,6 +4,7 @@ globs: ["*.py"]
 alwaysApply: true
 ---
 
+
 # Python Basics - Coding Standards
 
 ## Type Hints
@@ -18,7 +19,7 @@ alwaysApply: true
 - Google-style docstrings for non-trivial functions:
   ```python
   """Parse uptime from systemctl status output.
-  
+
   Args:
       status_text: Raw status output from systemctl.
       
@@ -71,9 +72,12 @@ alwaysApply: true
 
 - Write tests for new functionality in the tests/ directory.
 - Test behavior, not implementation details.
-- Prefer black-box tests over mocking internals.
+- Minimize mocking: only mock I/O boundaries (subprocess, network, filesystem). Test pure functions directly.
+- Focus on unique edge cases. Avoid redundant test variations and assertions which exercise the same logic.
+- As a rule of thumb, tests are as small as possible (atomic, test one thing) and we write the fewest amount of tests as possible to cover as much as possible
+- This rule can be broken for larger integration tests, but always consider if we can apply the rule before breaking it.
 - Add or update tests alongside code changes.
-- Use pytest, parameterization, and fixtures. Avoid test classes, only functions.
+- Use pytest and parametrization. Avoid test classes.
 
 ## Documentation
 
@@ -88,6 +92,7 @@ alwaysApply: true
 ## Examples
 
 ### Good: Modern type hints and dataclass
+
 ```python
 @dataclass
 class ServiceStatus:
@@ -102,6 +107,7 @@ def get_service_status(service: str) -> ServiceStatus:
 ```
 
 ### Good: Specific exception handling
+
 ```python
 try:
     result = subprocess.run(cmd, check=True, text=True, capture_output=True)
