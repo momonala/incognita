@@ -1,6 +1,7 @@
 """Tests for database module functions."""
 
-from incognita.database import extract_properties_from_geojson, filter_by_accuracy
+from incognita.database import (extract_properties_from_geojson,
+                                filter_by_accuracy)
 
 
 def test_filter_by_accuracy_removes_inaccurate_points():
