@@ -31,7 +31,16 @@ dependencies = [
     "isort>=7.0.0",
     "vulture>=2.14",
     "schedule>=1.2.2",
+    "typer>=0.9.0",
 ]
+
+[tool.config]
+data_api_port = 5003
+dashboard_port = 5004
+flights_map_filename = "static/flights_pydeck.html"
+gps_map_filename = "static/gps_pydeck.html"
+visited_map_filename = "static/visited_pydeck.html"
+default_location = [52.52, 13.405]
 
 [build-system]
 requires = ["hatchling"]
@@ -42,6 +51,7 @@ packages = ["incognita"]
 
 [project.scripts]
 app = "incognita.app:main"
+config = "incognita.config:main"
 data-api = "incognita.data_api:main"
 refresh-db = "incognita.scripts.refresh_db:main"
 
@@ -60,7 +70,7 @@ check_untyped_defs = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=. --cov-report=term-missing"
+addopts = "-s -v --cov=. --cov-report=term-missing"
 
 [tool.coverage.run]
 omit = ["tests/*", "*/test_*.py"]

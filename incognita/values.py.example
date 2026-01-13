@@ -1,0 +1,10 @@
+# Stub values for CI/testing - copy to values.py for local development
+
+MAPBOX_API_KEY = "pk.dummy_mapbox_key_for_testing"
+GOOGLE_MAPS_API_KEY = "AIzaSyDummyKeyForTesting"
+TELEGRAM_TOKEN = "0000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+TELEGRAM_CHAT_ID = "0000000000"
+
+flights_map_filename = "static/flights_pydeck.html"
+gps_map_filename = "static/gps_pydeck.html"
+visited_map_filename = "static/visited_pydeck.html"
