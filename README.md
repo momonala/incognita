@@ -1,5 +1,8 @@
 # Incognita
 
+[![CI](https://github.com/momonala/incognita/actions/workflows/ci.yml/badge.svg)](https://github.com/momonala/incognita/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/momonala/incognita/branch/main/graph/badge.svg)](https://codecov.io/gh/momonala/incognita)
+
 Personal GPS tracking and travel visualization system. Collects location data from iPhone Overland app and provides interactive dashboards for GPS tracking, flight history, and countries visited.
 
 ## Tech Stack

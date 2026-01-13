@@ -1,16 +1,8 @@
-service_name="incognita"
+set -e
 
-# Service names
-prefix="projects_incognita_"
-data_api_service="${prefix}data-api"
-dashboard_service="${prefix}dashboard"
-backup_scheduler_service="${prefix}data-backup-scheduler"
-
-# Port numbers
-data_api_port=5003
-dashboard_port=5004
-
-set -e  # Exit immediately if a command exits with a non-zero status
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
 echo "✅ Installing uv (Python package manager)"
 if ! command -v uv &> /dev/null; then
@@ -23,6 +15,23 @@ fi
 
 echo "✅ Installing project dependencies with uv"
 uv sync
+
+service_name=$(uv run config --project-name)
+prefix="projects_${service_name}_"
+data_api_service="${prefix}data-api"
+dashboard_service="${prefix}dashboard"
+backup_scheduler_service="${prefix}data-backup-scheduler"
+data_api_port=$(uv run config --data-api-port)
+dashboard_port=$(uv run config --dashboard-port)
+
+echo "📋 Configuration:"
+{
+    uv run config --all | while IFS='=' read -r key value; do
+        echo -e "   ${CYAN}${key}${NC}|${YELLOW}${value}${NC}"
+    done
+    echo -e "   ${CYAN}data_api_port${NC}|${YELLOW}${data_api_port}${NC}"
+    echo -e "   ${CYAN}dashboard_port${NC}|${YELLOW}${dashboard_port}${NC}"
+} | column -t -s '|'
 
 echo "Copying service file to systemd directory"
 sudo cp install/${data_api_service}.service  /lib/systemd/system/${data_api_service}.service
