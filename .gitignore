@@ -41,6 +41,7 @@ build/
 *~
 .dir-locals.el
 .envrc
+.cursor/
 
 # Cache and temporary files
 .cache/
@@ -68,7 +69,7 @@ ehthumbs.db
 Thumbs.db
 
 # Secrets and credentials
-values.py
+**/*values.py
 google_application_credentials.json
 *.pem
 *.key
@@ -76,23 +77,8 @@ google_application_credentials.json
 .env.local
 secrets/
 
-# Database files (in data directories)
-data/*.sqlite
-data/*.sqlite3
-raw_data/*.db
-raw_data/*.sqlite
-raw_data/*.sqlite3
-
-# SQLite WAL (Write-Ahead Logging) temporary files
-*.db-wal
-*.db-shm
-
-# Data directories (ignore all files within)
-raw_data/
-
 # Media files
 *.mp4
-*.mp3
 *.avi
 *.mov
 
@@ -107,6 +93,3 @@ static/*.html
 # Local development
 .local/
 .ipython/
-!data/geo_data.db
-.git.backup
-!data/geo_data.db

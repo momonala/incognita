@@ -4,7 +4,8 @@ import pycountry
 import pydeck as pdk
 from shapely.geometry import MultiPolygon
 
-from incognita.utils import df_from_gsheets, disk_memory, google_sheets_url, timed
+from incognita.utils import (df_from_gsheets, disk_memory, google_sheets_url,
+                             timed)
 from incognita.values import visited_map_filename
 
 

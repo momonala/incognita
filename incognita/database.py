@@ -18,11 +18,21 @@ MIN_HORIZONTAL_ACCURACY = 200.0
 
 @timed
 @lru_cache()
-def get_gdf_from_db(db_filename: str = DB_FILE) -> pd.DataFrame:
-    """Returned the cached geojson/location dataframe."""
+def get_gdf_from_db(
+    db_filename: str = DB_FILE,
+    date_min: str | None = None,
+    date_max: str | None = None,
+) -> pd.DataFrame:
+    """Return the cached geojson/location dataframe, optionally filtered by timestamp range."""
+    query = f"SELECT lon, lat, timestamp FROM {DB_NAME}"
+    params: list = []
+    if date_min is not None and date_max is not None:
+        query += " WHERE timestamp >= ? AND timestamp <= ?"
+        params = [date_min, date_max]
+    query += " ORDER BY timestamp"
     with sqlite3.connect(db_filename) as conn:
-        df = pd.read_sql(f"select lon, lat, timestamp from {DB_NAME}", conn)
-    return df.sort_values("timestamp").reset_index(drop=True)
+        df = pd.read_sql(query, conn, params=params if params else None)
+    return df.reset_index(drop=True)
 
 
 def update_db(geojson_filename: str, db_filename: str = DB_FILE, conn: sqlite3.Connection | None = None):

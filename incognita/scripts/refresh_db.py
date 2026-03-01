@@ -6,7 +6,8 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from incognita.database import DB_FILE, DB_NAME, create_timestamp_index, update_db
+from incognita.database import (DB_FILE, DB_NAME, create_timestamp_index,
+                                update_db)
 
 logger = logging.getLogger("incognita.database")
 logger.setLevel(logging.WARNING)
