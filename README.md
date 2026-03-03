@@ -106,8 +106,10 @@ incognita/
 │   ├── app.py                  # Main Flask web app (port 5004)
 │   ├── data_api.py             # GPS data receiver server (port 5003)
 │   ├── database.py             # SQLite database operations
-│   ├── processing.py            # GPS data processing (speed, distance)
-│   ├── gps.py                  # GPS map generation
+│   ├── geo_distance.py         # Great-circle (haversine) distance
+│   ├── gps_point_series.py     # GPS point series: segment speed, trip split, stationary groups
+│   ├── gps.py                  # GPS data API + Deck.gl map rendering
+│   ├── gps_trips_renderer.py   # GPS trip extraction + map generation from raw_data
 │   ├── flights.py              # Flight data processing
 │   ├── countries.py            # Country tracking
 │   ├── utils.py                # Utility functions
@@ -116,7 +118,7 @@ incognita/
 │       ├── refresh_db.py       # Rebuild database from raw files
 │       ├── plot_recent.py      # Plot recent GPS data
 │       └── generate_video.py   # Generate video from GPS tracks
-├── raw_data/                   # Organized GeoJSON files
+├── ../raw_data/                # Organized GeoJSON files (sibling to repo)
 │   └── YYYY/MM/DD/HH/          # Hierarchical structure
 ├── templates/                  # Jinja2 templates
 │   ├── index.html
@@ -196,7 +198,8 @@ overland (table)
 
 ### File Structure
 
-Raw GeoJSON files are organized hierarchically:
+Raw GeoJSON files are organized hierarchically (by default stored in a `raw_data/` directory
+adjacent to this repository, e.g. `../raw_data` when running commands from the project root):
 ```
 raw_data/
 └── YYYY/
@@ -240,7 +243,7 @@ This script:
 
 | Path | Purpose |
 |------|---------|
-| `raw_data/YYYY/MM/DD/HH/` | Organized GeoJSON files by date/hour |
+| `../raw_data/YYYY/MM/DD/HH/` | Organized GeoJSON files by date/hour |
 | `data/geo_data.db` | SQLite database with all location data (tracked via Git LFS) |
 | `.cache/` | Joblib function cache (not version controlled) |
 

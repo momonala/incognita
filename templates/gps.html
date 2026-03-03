@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Incognita</title>
+    <title>GPS | Incognita</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
@@ -15,25 +15,29 @@
 <body>
     {% include 'navbar.html' %}
 
-    <div class="center-container">
-        <div class="date-container">
-            <form id="date_form" action="/gps" method="post">
-                <label for="start_date">Start Date:</label>
-                <input type="text" id="start_date" name="start_date">
-                <label for="end_date">End Date:</label>
-                <input type="text" id="end_date" name="end_date">
-                <button type="submit" id="submit_button" class="submit-button">Submit</button>
+    <main class="gps-page map-page">
+        <header class="gps-toolbar map-page__bar" aria-label="Date range and map info">
+            <form id="date_form" action="/gps" method="post" class="gps-toolbar__form">
+                <div class="gps-toolbar__dates">
+                    <label for="start_date">From</label>
+                    <input type="text" id="start_date" name="start_date" value="{{ start_date }}" autocomplete="off" aria-label="Start date">
+                    <label for="end_date">To</label>
+                    <input type="text" id="end_date" name="end_date" value="{{ end_date }}" autocomplete="off" aria-label="End date">
+                </div>
+                <p class="gps-toolbar__stats" aria-live="polite">
+                    <span>{{ day_count }} day{{ 's' if day_count != 1 else '' }}</span>
+                    <span>{{ trips_count }} trip{{ 's' if trips_count != 1 else '' }}</span>
+                    <span>{{ track_points }} track point{{ 's' if track_points != 1 else '' }}</span>
+                    <span>{{ file_size_mb|round(2) }} MB</span>
+                </p>
+                <button type="submit" id="submit_button" class="gps-toolbar__submit">Update</button>
             </form>
-        </div>
-    </div>
+        </header>
 
-    </div>
-    <h2>Showing GPS data between:</h2>
-    <p>{{ start_date }} and {{ end_date }}</p>
-    <div class="map-container-gps">
-        <iframe src="{{ map_filename }}" style="border:0;" loading="lazy"></iframe>
-    </div>
-
+        <section class="gps-map map-page__map" aria-label="GPS track map">
+            <iframe src="{{ map_filename }}" title="GPS track map" loading="lazy"></iframe>
+        </section>
+    </main>
 </body>
 
 <script>
@@ -45,14 +49,12 @@
             dateFormat: 'yy-mm-dd'
         });
 
-        // Listen for keydown event on input fields
-        $("#start_date, #end_date").on("keydown", function(event) {
-            if (event.which === 13) { // Enter key
+        $("#start_date, #end_date").on("keydown", function (event) {
+            if (event.key === "Enter") {
                 $("#date_form").submit();
             }
         });
     });
 </script>
-
 
 </html>

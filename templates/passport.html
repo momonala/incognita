@@ -3,34 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Incognita</title>
+    <title>Passport | Incognita</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
     {% include 'navbar.html' %}
 
-<!--    overall stats-->
-    <div class="stats-div">
-        <div class="stat">
-            <h2>Countries Visited</h2>
-            <p>{{ visited_stats['Countries'] }}</p>
-        </div>
-    </div>
+    <main class="passport-page map-page">
+        <header class="passport-bar map-page__bar" aria-label="Passport stats">
+            <div class="passport-bar__row">
+                <div class="passport-bar__left">
+                    <span class="passport-bar__title">Countries visited: <strong>{{ visited_stats['Countries'] }}</strong></span>
+                    <span class="passport-bar__coverage">
+                        By count: {{ visited_stats['pct_by_count'] }}% By area: {{ visited_stats['pct_by_area'] }}%
+                    </span>
+                </div>
+                <div class="passport-bar__right">
+                    <span class="passport-bar__updated">Updated: {{ modified_date }}</span>
+                    <a href="{{ gsheets_url }}" target="_blank" rel="noopener noreferrer" class="passport-bar__link">Sheets</a>
+                </div>
+            </div>
+            <div class="passport-bar__flags-row" aria-label="Country flags for visited countries">
+                <div class="passport-flag-strip">
+                    <span class="passport-flag-strip__inner">
+                        {% for item in flags_data %}
+                        <span class="passport-flag-emoji" title="{{ item.name }}">{{ item.flag }}</span>
+                        {% endfor %}
+                    </span>
+                </div>
+            </div>
+        </header>
 
-<!--    flags-->
-    <div class="stats-div">
-        <div class="flag">
-            <p>{{ flags }}</p>
-        </div>
-    </div>
-
-<!--map-->
-    <div class="map-container">
-        <iframe src="{{ map_filename }}" style="border:0;" loading="lazy"></iframe>
-    </div>
-    <p>Last updated: {{ modified_date }}</p>
-    <p><a href= {{ gsheets_url }} > Link to Google Sheets</a></p>
-
+        <section class="passport-map map-page__map" aria-label="Visited countries map">
+            <iframe src="{{ map_filename }}" title="Visited countries map" loading="lazy"></iframe>
+        </section>
+    </main>
 </body>
 </html>

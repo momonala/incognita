@@ -35,13 +35,14 @@ def get_gdf_from_db(
     return df.reset_index(drop=True)
 
 
-def update_db(geojson_filename: str, db_filename: str = DB_FILE, conn: sqlite3.Connection | None = None):
-    """Updates db: db_filename with contents of parsed geojson_filename
+def update_db(
+    geojson_filename: str,
+    db_filename: str = DB_FILE,
+    conn: sqlite3.Connection | None = None,
+) -> None:
+    """Update database with contents of parsed GeoJSON file.
 
-    Args:
-        geojson_filename: Path to the GeoJSON file to process
-        db_filename: Path to the database file (used if conn is None)
-        conn: Optional existing database connection to reuse
+    geojson_filename is appended to the table; conn is used if provided, else a new connection to db_filename.
     """
     raw_geojson = read_geojson_file(geojson_filename)
     if not raw_geojson:
@@ -63,7 +64,8 @@ def update_db(geojson_filename: str, db_filename: str = DB_FILE, conn: sqlite3.C
     logger.info(f"Updated: {db_filename=} with: {geojson_filename=} size: {df.shape=}")
 
 
-def create_timestamp_index():
+def create_timestamp_index() -> None:
+    """Create timestamp index on the location table for faster range queries."""
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute(f"CREATE INDEX idx_timestamp ON {DB_NAME} (timestamp);")
         conn.commit()
@@ -71,15 +73,15 @@ def create_timestamp_index():
 
 
 def read_geojson_file(filename: str) -> list[dict] | None:
-    """Return raw geojson entries as list of JSONs, plus source file name."""
-    with open(filename) as f:
+    """Return parsed GeoJSON location entries with source filename added, or None on parse error."""
+    with open(filename, encoding="utf-8") as f:
         try:
-            data = f.read()
-            raw_geojson = json.loads(data)["locations"]
-            return [{**d, **{"geojson_file": filename}} for d in raw_geojson]
-        except Exception as e:
-            logger.error(f"Failed parsing {filename=} with {e}")
-            return
+            data = json.load(f)
+            raw_geojson = data["locations"]
+            return [{**d, "geojson_file": filename} for d in raw_geojson]
+        except (KeyError, json.JSONDecodeError) as e:
+            logger.error("Failed parsing %s: %s", filename, e)
+            return None
 
 
 def filter_by_accuracy(geo_data: list[dict], min_horizontal_accuracy: float) -> list[dict]:
@@ -121,50 +123,29 @@ def extract_properties_from_geojson(
     return geo_data_parsed
 
 
-@timed
-def fetch_coordinates(
-    lookback_hours: int = 24,
-    min_accuracy: float | None = None,
-) -> list[tuple]:
-    """Return coordinates from the specified lookback period sorted by timestamp.
+def get_gdf_for_map(
+    date_min: str,
+    date_max: str,
+    min_accuracy: float = 100.0,
+    db_filename: str = DB_FILE,
+) -> pd.DataFrame:
+    """Return GPS points for the map with same filtering as /coordinates API.
 
-    Args:
-        lookback_hours: number of hours to look back from current time (default: 24)
-        age_db: timestamp of the oldest point in the database (default: get_last_timestamp())
-        min_accuracy: minimum horizontal accuracy threshold in meters (default: None)
+    Only moving points (speed > 0) with horizontal_accuracy <= min_accuracy
+    in the given timestamp range. Used by the dashboard GPS route to align
+    with the coordinates endpoint.
+
     Returns:
-        List of (ISO 8601 timestamp, latitude, longitude, horizontal_accuracy) tuples from specified period,
-        sorted by timestamp ascending
+        DataFrame with columns lon, lat, timestamp, accuracy, speed.
     """
-    # Calculate exact timestamp bounds for the window we want
-    end_time = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%dT%H:%M:%SZ")
-    start_time = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=lookback_hours)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
-
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        base_query = f"""
-            SELECT 
-                strftime('%Y-%m-%dT%H:%M:%SZ', timestamp) as timestamp,
-                lat,
-                lon,
-                horizontal_accuracy
+    with sqlite3.connect(db_filename) as conn:
+        query = f"""
+            SELECT lon, lat, timestamp, horizontal_accuracy AS accuracy, speed
             FROM {DB_NAME}
             WHERE timestamp >= ? AND timestamp <= ?
             AND speed > 0
+            AND horizontal_accuracy <= ?
+            ORDER BY timestamp ASC
         """
-
-        params = [start_time, end_time]
-        if min_accuracy is not None:
-            base_query += " AND horizontal_accuracy <= ?"
-            params.append(min_accuracy)
-
-        base_query += " ORDER BY timestamp ASC"
-        cursor.execute(base_query, params)
-        coordinates = cursor.fetchall()
-
-        return [
-            (ts, float(lat), float(lon), float(horizontal_accuracy))
-            for ts, lat, lon, horizontal_accuracy in coordinates
-        ]
+        df = pd.read_sql(query, conn, params=[date_min, date_max, min_accuracy])
+    return df.reset_index(drop=True)

@@ -4,25 +4,30 @@ import airportsdata
 import pandas as pd
 import plotly.graph_objs as go
 import pycountry
-import pydeck
 import pydeck as pdk
 
+from incognita.config import FLIGHTS_MAP_FILENAME
 from incognita.countries import get_countries_df
-from incognita.processing import get_haversine_dist
-from incognita.utils import coordinates_from_place_name, df_from_gsheets
-from incognita.values import (GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY,
-                              flights_map_filename)
+from incognita.geo_distance import get_haversine_dist
+from incognita.utils import DEFAULT_MAP_BOX, df_from_gsheets
+from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
 
-airport_db = airportsdata.load("IATA")
+AIRPORT_DB = airportsdata.load("IATA")
+
+DISTANCE_EARTH_KM = 40_075
+DISTANCE_MOON_KM = 385_000
+DISTANCE_MARS_KM = 54_600_000
+
+AGGREGATION_OPTIONS = ("year", "month", "dayofweek")
 
 
-def _city_to_coord(city: str) -> tuple[float, float]:
-    geo_box = coordinates_from_place_name(city)
-    return round(geo_box.center.lon, 3), round(geo_box.center.lat, 3)
+def _city_to_coord(_city: str) -> tuple[float, float]:
+    """(lon, lat) fallback when airport IATA is unknown; uses default map center (Berlin)."""
+    return round(DEFAULT_MAP_BOX.center.lon, 3), round(DEFAULT_MAP_BOX.center.lat, 3)
 
 
 def _airport_to_coord(airport_iata_code: str) -> tuple[float, float]:
-    airport = airport_db[airport_iata_code]
+    airport = AIRPORT_DB[airport_iata_code]
     return round(airport["lon"], 3), round(airport["lat"], 3)
 
 
@@ -49,7 +54,8 @@ def _distance_between_airports_km(flight_row) -> float:
     return round(dist_meters / 1000, 2)
 
 
-def get_flights_df():
+def get_flights_df() -> pd.DataFrame:
+    """Load flights from Google Sheets, add coords and distance, sort by date."""
     flights_df = df_from_gsheets()
     flights_df = flights_df[~flights_df["Origin"].isnull()]
     flights_df = flights_df[
@@ -74,76 +80,79 @@ def get_flights_df():
 
 
 def get_countries(flights_df: pd.DataFrame) -> list:
+    """List of pycountry Country objects for countries visited by flight (arrival/departure), by frequency."""
+
     def country_from_airport(airport: str) -> str | None:
-        if str(airport) == "nan" or not airport:
-            return
-        if airport == "SXF":
+        if pd.isna(airport) or not str(airport).strip():
+            return None
+        if airport == "SXF":  # Berlin Schönefeld Airport
             return "DE"
-        return airport_db[airport]["country"]
+        if airport == "REP":  # Siam Reap Airport in Cambodia
+            return "KH"
+        return AIRPORT_DB[airport]["country"]
 
-    def _country(country_code: str):
-        return pycountry.countries.get(alpha_2=country_code)
-
-    flights_df["country_arrival"] = flights_df["arrival_airport"].apply(country_from_airport)
-    flights_df["country_departure"] = flights_df["departure_airport"].apply(country_from_airport)
-    all_countries = pd.concat([flights_df["country_arrival"], flights_df["country_departure"]])
-    country_value_counts = all_countries.value_counts()
-    return list(map(lambda cc: _country(cc), country_value_counts.index))
+    arr_codes = flights_df["arrival_airport"].apply(country_from_airport)
+    dep_codes = flights_df["departure_airport"].apply(country_from_airport)
+    by_frequency = pd.concat([arr_codes, dep_codes]).value_counts()
+    return [pycountry.countries.get(alpha_2=code) for code in by_frequency.index]
 
 
-def get_flights_stats(flights_df: pd.DataFrame) -> dict:
-    def get_airline(flight_num: str | None) -> str | None:
+def get_flights_stats(flights_df: pd.DataFrame) -> dict[str, int]:
+    """Aggregate flight stats: count of flights, distance, airports, airlines, routes, countries."""
+
+    def airline_from_flight_num(flight_num: str | None) -> str | None:
         if not isinstance(flight_num, str):
-            return
+            return None
         return flight_num.split(" ")[0]
 
-    airlines_value_counts = flights_df["Flight #"].apply(get_airline).value_counts()
-    flights_df["route"] = flights_df["departure_airport"] + "-" + flights_df["arrival_airport"]
-    routes_value_counts = flights_df["route"].value_counts()
-    airport_value_counts = pd.concat(
+    airlines_count = flights_df["Flight #"].apply(airline_from_flight_num).value_counts()
+    routes_count = (flights_df["departure_airport"] + "-" + flights_df["arrival_airport"]).value_counts()
+    airports_count = pd.concat(
         [flights_df["departure_airport"], flights_df["arrival_airport"]]
     ).value_counts()
-    flight_distance = round(flights_df["Distance km"].sum())
-    countires = get_countries(flights_df)
-
     return {
-        "Flights": flights_df.count()["Date"],
-        "Flight Distance": flight_distance,
-        "Airports": len(airport_value_counts),
-        "Airlines": len(airlines_value_counts),
-        "Routes": len(routes_value_counts),
-        "Countries": len(countires),
+        "Flights": int(flights_df["Date"].count()),
+        "Flight Distance": round(flights_df["Distance km"].sum()),
+        "Airports": len(airports_count),
+        "Airlines": len(airlines_count),
+        "Routes": len(routes_count),
+        "Countries": len(get_countries(flights_df)),
     }
 
 
-def get_flight_dist_space_stats(flight_distance: float) -> dict:
-    distance_around_earth = 40_075
-    distance_to_moon = 385_000
-    distance_to_mars = 54_600_000
-
-    dist_around_earth = round(flight_distance / distance_around_earth, 1)
-    dist_to_moon = round(flight_distance / distance_to_moon, 1)
-    dist_to_mars = round(flight_distance / distance_to_mars, 3)
-
-    f"""
-    {dist_around_earth}x around the earth
-    {dist_to_moon}x to the moon
-    {dist_to_mars}x to the mars
-    """
+def get_flight_dist_space_stats(flight_distance_km: float) -> dict[str, float]:
+    """Compare total flight distance to Earth circumference, Moon distance, Mars distance (multiples)."""
     return {
-        "earth": dist_around_earth,
-        "moon": dist_to_moon,
-        "mars": dist_to_mars,
+        "earth": round(flight_distance_km / DISTANCE_EARTH_KM, 1),
+        "moon": round(flight_distance_km / DISTANCE_MOON_KM, 1),
+        "mars": round(flight_distance_km / DISTANCE_MARS_KM, 3),
     }
 
 
-def flights_df_to_graph(flights_df: pd.DataFrame, agg_by: str):
-    assert agg_by in ["year", "month", "dayofweek"], f"{agg_by=} not allowed"
-    flights_per_year = flights_df.groupby(flights_df["Date"].dt.year).size()
-    flights_per_month = flights_df.groupby(flights_df["Date"].dt.month).size()
-    flights_per_dayofweek = flights_df.groupby(flights_df["Date"].dt.dayofweek).size()
+def get_flight_aggregations(flights_df: pd.DataFrame) -> dict[str, pd.Series]:
+    """Compute year, month, dayofweek counts once for use by flights_df_to_graph."""
+    return {
+        "year": flights_df.groupby(flights_df["Date"].dt.year).size(),
+        "month": flights_df.groupby(flights_df["Date"].dt.month).size(),
+        "dayofweek": flights_df.groupby(flights_df["Date"].dt.dayofweek).size(),
+    }
 
-    agg_by_mapping = {
+
+def flights_df_to_graph(
+    flights_df: pd.DataFrame,
+    agg_by: str,
+    aggregations: dict[str, pd.Series] | None = None,
+) -> str:
+    """Plotly HTML for flights aggregated by year, month, or day of week."""
+    if agg_by not in AGGREGATION_OPTIONS:
+        raise ValueError(f"agg_by must be one of {AGGREGATION_OPTIONS}")
+    if aggregations is None:
+        aggregations = get_flight_aggregations(flights_df)
+    flights_per_year = aggregations["year"]
+    flights_per_month = aggregations["month"]
+    flights_per_dayofweek = aggregations["dayofweek"]
+
+    agg_config = {
         "year": {
             "data": flights_per_year,
             "title": "Flights per Year",
@@ -163,10 +172,9 @@ def flights_df_to_graph(flights_df: pd.DataFrame, agg_by: str):
             "x_labels": list(calendar.day_name),
         },
     }
-    data = agg_by_mapping[agg_by]["data"]
-    title = agg_by_mapping[agg_by]["title"]
-    x_title = agg_by_mapping[agg_by]["x_title"]
-    x_labels = agg_by_mapping[agg_by]["x_labels"]
+    cfg = agg_config[agg_by]
+    data = cfg["data"]
+    x_labels = cfg["x_labels"]
 
     fig = go.Figure()
     fig.add_trace(
@@ -179,11 +187,10 @@ def flights_df_to_graph(flights_df: pd.DataFrame, agg_by: str):
         )
     )
 
-    # Customize layout
     fig.update_layout(
-        title=title,
+        title=cfg["title"],
         xaxis=dict(
-            title=x_title,
+            title=cfg["x_title"],
             tickmode="array",
             tickvals=list(range(len(x_labels))),
             ticktext=x_labels,
@@ -213,20 +220,20 @@ def flights_df_to_graph(flights_df: pd.DataFrame, agg_by: str):
     return fig.to_html(full_html=False)
 
 
-def _tooltip(row):
-    return f"""
-    <div>Date: {row["date_vis"]}</div>
-    <div>Origin: {row["Origin"]}</div>
-    <div>Destination: {row["Destination"]}</div>
-    <div>Flight #: {row["Flight #"]}</div>
-    <div>Distance km: {row["Distance km"]}</div>
-    """
+def _flight_tooltip_row(row: pd.Series) -> str:
+    """Build tooltip HTML for one flight row."""
+    return f"""<div>Date: {row["date_vis"]}</div>
+<div>Origin: {row["Origin"]}</div>
+<div>Destination: {row["Destination"]}</div>
+<div>Flight #: {row["Flight #"]}</div>
+<div>Distance km: {row["Distance km"]}</div>"""
 
 
-def flights_df_to_deck_map(flights_df: pd.DataFrame) -> pydeck.Deck:
-    # Define layers to display on a map
-    flights_df["date_vis"] = flights_df["Date"].apply(lambda x: x.strftime("%Y-%m-%d"))
-    flights_df["tooltip"] = flights_df.apply(_tooltip, axis=1)
+def flights_df_to_deck_map(flights_df: pd.DataFrame) -> pdk.Deck:
+    """Render flights as great-circle layer and write map HTML."""
+    flights_df = flights_df.copy()
+    flights_df["date_vis"] = flights_df["Date"].dt.strftime("%Y-%m-%d")
+    flights_df["tooltip"] = flights_df.apply(_flight_tooltip_row, axis=1)
     flights_layer = pdk.Layer(
         "GreatCircleLayer",
         flights_df,
@@ -238,7 +245,7 @@ def flights_df_to_deck_map(flights_df: pd.DataFrame) -> pydeck.Deck:
         get_source_color=[0, 255, 255],
         auto_highlight=True,
     )
-    countrties_layer = get_airport_countries_visited_deck_layer()
+    countries_layer = get_airport_countries_visited_deck_layer()
 
     # Set the viewport location
     view_state = pdk.ViewState(latitude=30, longitude=0, zoom=1, bearing=0, pitch=0)
@@ -257,7 +264,7 @@ def flights_df_to_deck_map(flights_df: pd.DataFrame) -> pydeck.Deck:
         },
     }
     r = pdk.Deck(
-        layers=[countrties_layer, flights_layer],
+        layers=[countries_layer, flights_layer],
         initial_view_state=view_state,
         api_keys={"mapbox": MAPBOX_API_KEY, "google_maps": GOOGLE_MAPS_API_KEY},
         map_provider="mapbox",
@@ -265,23 +272,21 @@ def flights_df_to_deck_map(flights_df: pd.DataFrame) -> pydeck.Deck:
         tooltip=tooltip,
     )
     r.picking_radius = 10
-    r.to_html(flights_map_filename)
+    r.to_html(FLIGHTS_MAP_FILENAME)
     return r
 
 
-def get_airport_countries_visited_deck_layer():
+def get_airport_countries_visited_deck_layer() -> pdk.Layer:
+    """Pydeck PolygonLayer for countries visited by flight (from airport locations)."""
     flights_df = get_flights_df()
     countries_df = get_countries_df()
-    airport_countries_visited = get_countries(flights_df)
-    countries_visited_alpha_3 = [x.alpha_3 for x in airport_countries_visited]
-    airport_countries_visited_df = countries_df[countries_df.alpha_3.isin(countries_visited_alpha_3)]
-
-    airport_countries_visited_df["tooltip"] = airport_countries_visited_df.apply(
-        lambda x: f"<div>{x['flag']} {x['name']}</div>", axis=1
-    )
+    visited = get_countries(flights_df)
+    alpha_3_codes = [c.alpha_3 for c in visited]
+    layer_df = countries_df[countries_df["alpha_3"].isin(alpha_3_codes)].copy()
+    layer_df["tooltip"] = layer_df.apply(lambda r: f"<div>{r['flag']} {r['name']}</div>", axis=1)
     return pdk.Layer(
         "PolygonLayer",
-        data=airport_countries_visited_df,
+        data=layer_df,
         get_polygon="geometry.coordinates",
         get_line_color=[0, 255, 0],
         get_fill_color=[0, 255, 0],

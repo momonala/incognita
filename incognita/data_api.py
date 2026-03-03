@@ -14,8 +14,8 @@ import pandas as pd
 import requests
 from flask import Flask, Response, jsonify, request
 
-from incognita.database import fetch_coordinates, update_db
-from incognita.processing import add_speed_to_gdf
+from incognita.database import update_db
+from incognita.gps import get_filtered_gps_df
 from incognita.utils import get_ip_address
 from incognita.values import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 
@@ -222,39 +222,51 @@ def dump():
     return jsonify({"result": "ok"})
 
 
+KM_TO_M = 1000  # max_distance query param is in km; get_filtered_gps_df expects meters
+
+
 @app.route("/coordinates", methods=["GET"])
 @log_payload_size
 def get_coordinates():
-    """Return list of (timestamp, lat, lon) tuples from database.
+    """Return list of (timestamp, lat, lon, accuracy) from database.
 
     Query Parameters:
-        lookback_hours: Optional[int] - number of hours to look back (default: 24)
+        lookback_hours: Optional[int] - hours to look back (default: 24)
         min_accuracy: Optional[float] - minimum accuracy in meters (default: 200)
-        max_distance: Optional[float] - maximum distance in kilometers (default: 0.1)
+        max_distance: Optional[float] - max segment distance in km (default: 0.1 = 100 m)
     """
     try:
-        # Get lookback hours from query params, default to 24 if not provided
         lookback_hours = request.args.get("lookback_hours", default=24, type=int)
         min_accuracy = request.args.get("min_accuracy", default=200, type=float)
-        max_distance = request.args.get("max_distance", default=0.1, type=float)
+        max_distance_km = request.args.get("max_distance", default=0.1, type=float)
 
-        # Ensure args are positive
-        for arg in [lookback_hours, min_accuracy, max_distance]:
+        for arg in [lookback_hours, min_accuracy, max_distance_km]:
             if arg <= 0:
                 return jsonify({"status": "error", "message": f"{arg} must be positive"}), 400
 
-        # Fetch coordinates while filtering by accuracy
-        logger.info(f"Fetching coordinates with {lookback_hours=} {min_accuracy=} {max_distance=}")
-        coordinates = fetch_coordinates(
-            lookback_hours=lookback_hours,
-            min_accuracy=min_accuracy,
+        max_distance_m = max_distance_km * KM_TO_M
+        end_ts = pd.Timestamp.now(tz="UTC")
+        start_ts = end_ts - pd.Timedelta(hours=lookback_hours)
+        date_min = start_ts.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+        date_max = end_ts.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+
+        logger.info(
+            "Fetching coordinates lookback_hours=%s min_accuracy=%s max_distance_km=%s",
+            lookback_hours,
+            min_accuracy,
+            max_distance_km,
         )
-        # Convert to pandas DataFrame, add speed, filter by distance
-        coordinates = pd.DataFrame(coordinates, columns=["timestamp", "lat", "lon", "accuracy"])
-        coordinates = add_speed_to_gdf(coordinates)
-        coordinates = coordinates[coordinates["meters"] <= max_distance]
+        gdf = get_filtered_gps_df(
+            date_min, date_max, min_accuracy_m=min_accuracy, max_distance_m=max_distance_m
+        )
         coordinates = [
-            (row["timestamp"], row["lat"], row["lon"], row["accuracy"]) for _, row in coordinates.iterrows()
+            (
+                row["timestamp"].strftime("%Y-%m-%dT%H:%M:%SZ"),
+                row["lat"],
+                row["lon"],
+                row["accuracy"],
+            )
+            for _, row in gdf.iterrows()
         ]
 
         return jsonify(
@@ -263,7 +275,7 @@ def get_coordinates():
                 "count": len(coordinates),
                 "lookback_hours": lookback_hours,
                 "min_accuracy": min_accuracy,
-                "max_distance": max_distance,
+                "max_distance": max_distance_km,
                 "coordinates": coordinates,
             }
         )
