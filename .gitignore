@@ -41,7 +41,6 @@ build/
 *~
 .dir-locals.el
 .envrc
-.cursor/
 
 # Cache and temporary files
 .cache/
@@ -93,3 +92,4 @@ static/*.html
 # Local development
 .local/
 .ipython/
+.cursor/
