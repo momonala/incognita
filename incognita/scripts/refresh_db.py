@@ -11,7 +11,7 @@ from incognita.database import DB_FILE, DB_NAME, create_timestamp_index, update_
 logger = logging.getLogger("incognita.database")
 logger.setLevel(logging.WARNING)
 
-root_dir = Path("raw_data")
+root_dir = Path("..", "incognita_raw_data")
 
 
 def process_file(file_path):

@@ -18,7 +18,7 @@ from incognita.utils import DEFAULT_MAP_BOX, timed
 
 logger = logging.getLogger(__name__)
 
-RAW_DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "raw_data"
+RAW_DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "incognita_raw_data"
 GPS_POINT_COLUMNS = ["lon", "lat", "timestamp"]
 METERS_PER_DEGREE = 111_000.0
 MAX_WORKERS_CAP = 32
@@ -66,10 +66,10 @@ def _load_one_geojson(path: Path) -> list[dict]:
 
 
 def _load_month_points(year: int, month: int) -> pd.DataFrame:
-    """Load all raw GPS points for the given year and month from raw_data/."""
+    """Load all raw GPS points for the given year and month from incognita_raw_data/."""
     month_root = _month_root(year, month)
     if not month_root.exists():
-        logger.info(f"No raw_data directory for {year:04d}-{month:02d} ({month_root})")
+        logger.info(f"No incognita_raw_data directory for {year:04d}-{month:02d} ({month_root})")
         return pd.DataFrame(columns=GPS_POINT_COLUMNS)
 
     paths = list(month_root.rglob("*.geojson"))
@@ -268,7 +268,7 @@ def get_trips_for_date_range(
     for year, month in tqdm(months, desc="Processing months"):
         month_root = _month_root(year, month)
         if not month_root.exists():
-            logger.info(f"No raw_data directory for {year:04d}-{month:02d} ({month_root})")
+            logger.info(f"No incognita_raw_data directory for {year:04d}-{month:02d} ({month_root})")
             continue
         month_hash = _compute_month_dir_hash(month_root)
         monthly_trips = _get_month_trips_cached_impl(

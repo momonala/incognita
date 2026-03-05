@@ -203,7 +203,7 @@ nav a.active {
     justify-content: center;
     flex-wrap: wrap;
     gap: var(--space-sm) var(--space-lg);
-    padding: var(--space-sm) var(--space-lg);
+    padding: var(--space-sm) var(--space-sm);
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border-light);
 }
@@ -284,7 +284,8 @@ nav a.active {
     position: relative;
 }
 
-.flights-map iframe {
+.flights-map iframe,
+.flights-map #flights-deck-container {
     position: absolute;
     top: 0;
     left: 0;
@@ -295,23 +296,42 @@ nav a.active {
 
 .flights-content {
     flex-shrink: 0;
-    padding: var(--space-md) var(--space-lg);
-    max-width: 1400px;
+    padding: var(--space-md) var(--space-sm);
+    max-width: none;
     margin: 0 auto;
     width: 100%;
     box-sizing: border-box;
 }
 
+/* One row, three equal chart columns; Apple-style card treatment */
 .flights-charts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-lg);
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: var(--space-md);
     margin-bottom: var(--space-lg);
 }
 
 .flights-charts__item {
-    flex: 1 1 300px;
     min-width: 0;
+    overflow: hidden;
+    padding: var(--space-lg);
+    background: var(--color-surface);
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.flights-charts__item .plotly,
+.flights-charts__item .js-plotly-plot {
+    max-width: 100%;
+    height: auto;
+}
+
+.flights-charts__item .plotly .modebar {
+    opacity: 0.6;
+}
+
+.flights-charts__item .plotly .modebar:hover {
+    opacity: 1;
 }
 
 .flights-table-wrap {

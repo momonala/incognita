@@ -63,14 +63,14 @@ def timed(func: Callable[..., object]) -> Callable[..., object]:
 GOOGLE_SHEETS_DOCUMENT_ID = "1V4hVhSH1_tHizwqlSQ2ymysQwwQMuFENfE9lB5vJPQY"
 
 
-def google_sheets_url(tab_name: str = "raw") -> str:
-    return f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_DOCUMENT_ID}/gviz/tq?tqx=out:csv&sheet={tab_name}"
+def google_sheets_export_csv_url(sheet_name: str) -> str:
+    return f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_DOCUMENT_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
 
 
-def google_sheets_view_url(tab_name: str = "raw") -> str:
-    """URL to open the sheet in the browser (no export params)."""
+def google_sheets_document_url() -> str:
+    """URL to open the Google Sheets document in the browser (no export params)."""
     return f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_DOCUMENT_ID}/edit"
 
 
-def df_from_gsheets(gsheets_url: str = google_sheets_url()) -> pd.DataFrame:
-    return pd.read_csv(gsheets_url, keep_default_na=False)
+def read_google_sheets_csv(export_url: str) -> pd.DataFrame:
+    return pd.read_csv(export_url, keep_default_na=False)

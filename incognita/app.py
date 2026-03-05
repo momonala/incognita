@@ -5,7 +5,7 @@ from pathlib import Path
 
 from flask import Flask, render_template, request, send_from_directory
 
-from incognita.config import FLIGHTS_MAP_FILENAME, GPS_MAP_FILENAME, VISITED_MAP_FILENAME
+from incognita.config import GPS_MAP_FILENAME, VISITED_MAP_FILENAME
 from incognita.countries import (
     get_countries_df,
     get_countries_visited,
@@ -13,19 +13,23 @@ from incognita.countries import (
     visited_df_to_deck_map,
 )
 from incognita.flights import (
-    flights_df_to_deck_map,
     flights_df_to_graph,
     get_countries,
     get_flight_aggregations,
     get_flight_dist_space_stats,
     get_flights_df,
+    get_flights_routes_for_map,
     get_flights_stats,
+    get_flights_visited_countries_for_map,
 )
 from incognita.gps_trips_renderer import get_trips_for_date_range, render_trips_to_file
-from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX, google_sheets_view_url
+from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX, google_sheets_document_url
+from incognita.values import MAPBOX_API_KEY
+from incognita.config import DASHBOARD_PORT
 
 GPS_DEFAULT_DAYS_BACK = 30
 DATE_FMT = "%Y-%m-%d"
+FLIGHTS_TABLE_DATE_FMT = "%Y.%m.%d"
 
 _base_dir = Path(__file__).parent.parent
 app = Flask(
@@ -61,6 +65,25 @@ def index():
     return render_template("index.html")
 
 
+def _flights_table_records(flights_df):
+    """Return list of dicts for flights table: date formatted, columns normalized for template."""
+    table_df = flights_df.copy()
+    table_df["Date"] = table_df["Date"].dt.strftime(FLIGHTS_TABLE_DATE_FMT)
+    table_df = table_df[
+        [
+            "Date",
+            "Origin",
+            "Destination",
+            "Flight #",
+            "departure_airport",
+            "arrival_airport",
+            "Distance km",
+        ]
+    ]
+    table_df.columns = [c.lower().replace(" ", "_").replace("#", "") for c in table_df.columns]
+    return table_df.to_dict(orient="records")
+
+
 @app.route("/flights")
 def flights():
     """Render flights page: stats, map, plots, and table."""
@@ -70,32 +93,27 @@ def flights():
     airport_countries_visited = get_countries(flights_df)
     flags = " ".join(c.flag for c in airport_countries_visited)
 
-    flights_df_to_deck_map(flights_df)
-    map_update_date = get_age_of_map_update(FLIGHTS_MAP_FILENAME)
-    logger.info("Updated flights map at: %s", map_update_date)
-
     aggregations = get_flight_aggregations(flights_df)
     graphs = {
         "year": flights_df_to_graph(flights_df, "year", aggregations),
         "month": flights_df_to_graph(flights_df, "month", aggregations),
         "dayofweek": flights_df_to_graph(flights_df, "dayofweek", aggregations),
     }
-    table_df = flights_df.copy()
-    table_df["Date"] = table_df["Date"].dt.strftime("%Y.%m.%d")
-    table_df.columns = [c.lower().replace(" ", "_").replace("#", "") for c in table_df.columns]
 
     return render_template(
         "flights.html",
-        modified_date=map_update_date,
+        modified_date="Live",
         flights_stats=flights_stats,
         flight_dist_space_stats=flight_dist_space_stats,
         flags=flags,
-        flights_map_filename=FLIGHTS_MAP_FILENAME,
+        flights_routes=get_flights_routes_for_map(flights_df),
+        flights_visited_countries=get_flights_visited_countries_for_map(flights_df),
+        mapbox_api_key=MAPBOX_API_KEY,
         flights_per_year_graph=graphs["year"],
         flights_per_month_graph=graphs["month"],
         flights_per_dayofweek_graph=graphs["dayofweek"],
-        flights_data=table_df.to_dict(orient="records"),
-        gsheets_url=google_sheets_view_url(),
+        flights_data=_flights_table_records(flights_df),
+        gsheets_url=google_sheets_document_url(),
     )
 
 
@@ -148,12 +166,13 @@ def passport():
         visited_stats=visited_stats,
         flags_data=flags_data,
         map_filename=VISITED_MAP_FILENAME,
-        gsheets_url=google_sheets_view_url("countries"),
+        gsheets_url=google_sheets_document_url(),
     )
 
 
 def main():
-    app.run(host="0.0.0.0", port=5004, debug=True)
+    logger.info(f"http://localhost:{DASHBOARD_PORT}")
+    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
  After=multi-user.target
 
 [Service]
-WorkingDirectory=/home/mnalavadi/incognita/raw_data
+WorkingDirectory=/home/mnalavadi/incognita/incognita_raw_data
 Type=idle
 ExecStart=/home/mnalavadi/.local/bin/uv run git_commit_scheduler.py
 User=mnalavadi

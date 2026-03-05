@@ -3,7 +3,7 @@
 [![CI](https://github.com/momonala/incognita/actions/workflows/ci.yml/badge.svg)](https://github.com/momonala/incognita/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/momonala/incognita/branch/main/graph/badge.svg)](https://codecov.io/gh/momonala/incognita)
 
-Personal GPS tracking and travel visualization system. Collects location data from iPhone Overland app and provides interactive dashboards for GPS tracking, flight history, and countries visited.
+Personal GPS tracking and travel visualization system. Collects location data from a GPS app ([Trace](https://github.com/momonala/Trace) or [Overland](https://github.com/aaronpk/Overland-iOS)) and provides interactive dashboards for GPS tracking, flight history, and countries visited.
 
 ## Tech Stack
 
@@ -18,7 +18,7 @@ flowchart LR
     end
     subgraph Server
         Overland -->|GeoJSON| DataAPI[Data API :5003]
-        DataAPI -->|Store| Files[raw_data/YYYY/MM/DD/HH/]
+        DataAPI -->|Store| Files[incognita_incognita_raw_data /YYYY/MM/DD/HH/]
         DataAPI -->|Update| DB[(SQLite DB)]
     end
     subgraph Web
@@ -37,14 +37,13 @@ flowchart LR
 - **Interactive Maps**: Visualize GPS tracks with PyDeck/Deck.gl
 - **Flight Tracking**: Analyze flight history with statistics and visualizations
 - **Countries Visited**: Track and visualize countries visited with passport-style view
-- **Heartbeat Monitoring**: Telegram alerts for server downtime
-- **Data Organization**: Hierarchical file structure organized by date/hour
+- **Heartbeat Monitoring**: Telegram alerts for data streaming downtime
 
 ## Prerequisites
 
 - Python 3.12+
 - uv (Python package manager)
-- iPhone with [Overland app](https://overland.p3k.io/) installed
+- phone with Trace or Overland installed for GPS dumps
 - Telegram bot token (optional, for alerts)
 
 ## Installation
@@ -59,13 +58,16 @@ flowchart LR
 
 2. Configure `incognita/values.py`:
    ```python
-   TELEGRAM_TOKEN = "your_telegram_bot_token"  # Optional
-   TELEGRAM_CHAT_ID = "your_chat_id"           # Optional
+   MAPBOX_API_KEY = "your_mapbox_token"              # Required for maps
+   GOOGLE_MAPS_API_KEY = "your_google_maps_key"      # Optional (some views)
+   TELEGRAM_TOKEN = "your_telegram_bot_token"        # Optional (heartbeat alerts)
+   TELEGRAM_CHAT_ID = "your_chat_id"                 # Optional (heartbeat alerts)
    ```
 
 3. Initialize the database:
    ```bash
-   python -m incognita.scripts.refresh_db
+   uv run refresh-db
+   # or: python -m incognita.scripts.refresh_db
    ```
 
 ## Running
@@ -75,7 +77,8 @@ flowchart LR
 Receives GPS data from Overland app:
 
 ```bash
-python -m incognita.data_api
+uv run data-api
+# or: python -m incognita.data_api
 ```
 
 Server runs on port 5003. Configure Overland app to POST to:
@@ -87,8 +90,8 @@ Server runs on port 5003. Configure Overland app to POST to:
 Main Flask application for viewing data:
 
 ```bash
-python -m incognita.app
-```
+uv run app
+# or: python -m incognita.app```
 
 Open `http://localhost:5004`
 
@@ -109,7 +112,7 @@ incognita/
 │   ├── geo_distance.py         # Great-circle (haversine) distance
 │   ├── gps_point_series.py     # GPS point series: segment speed, trip split, stationary groups
 │   ├── gps.py                  # GPS data API + Deck.gl map rendering
-│   ├── gps_trips_renderer.py   # GPS trip extraction + map generation from raw_data
+│   ├── gps_trips_renderer.py   # GPS trip extraction + map generation from incognita_raw_data
 │   ├── flights.py              # Flight data processing
 │   ├── countries.py            # Country tracking
 │   ├── utils.py                # Utility functions
@@ -118,7 +121,7 @@ incognita/
 │       ├── refresh_db.py       # Rebuild database from raw files
 │       ├── plot_recent.py      # Plot recent GPS data
 │       └── generate_video.py   # Generate video from GPS tracks
-├── ../raw_data/                # Organized GeoJSON files (sibling to repo)
+├── ../incognita_raw_data/                # Organized GeoJSON files (sibling to repo)
 │   └── YYYY/MM/DD/HH/          # Hierarchical structure
 ├── templates/                  # Jinja2 templates
 │   ├── index.html
@@ -192,16 +195,16 @@ overland (table)
 **Key constraints:**
 - `timestamp` is the unique primary key (one row per timestamp)
 - Data filtered by `horizontal_accuracy <= 200m` by default
-- Files organized in `raw_data/YYYY/MM/DD/HH/` structure
+- Files organized in `incognita_raw_data/YYYY/MM/DD/HH/` structure
 
 ## Data Organization
 
 ### File Structure
 
-Raw GeoJSON files are organized hierarchically (by default stored in a `raw_data/` directory
-adjacent to this repository, e.g. `../raw_data` when running commands from the project root):
+Raw GeoJSON files are organized hierarchically (by default stored in a `incognita_raw_data/` directory
+adjacent to this repository, e.g. `../incognita_raw_data` when running commands from the project root):
 ```
-raw_data/
+incognita_raw_data/
 └── YYYY/
     └── MM/
         └── DD/
@@ -218,11 +221,11 @@ Files are named using:
 
 Rebuild database from raw files:
 ```bash
-python -m incognita.scripts.refresh_db
-```
+uv run refresh-db
+# or: python -m incognita.scripts.refresh```
 
 This script:
-- Processes all GeoJSON files in `raw_data/`
+- Processes all GeoJSON files in `incognita_raw_data/`
 - Uses parallel processing for speed
 - Creates SQLite database with WAL mode
 - Filters by horizontal accuracy
@@ -243,7 +246,7 @@ This script:
 
 | Path | Purpose |
 |------|---------|
-| `../raw_data/YYYY/MM/DD/HH/` | Organized GeoJSON files by date/hour |
+| `../incognita_raw_data/YYYY/MM/DD/HH/` | Organized GeoJSON files by date/hour |
 | `data/geo_data.db` | SQLite database with all location data (tracked via Git LFS) |
 | `.cache/` | Joblib function cache (not version controlled) |
 
@@ -264,7 +267,8 @@ Data API server includes watchdog thread:
 black . && isort .
 
 # Refresh database
-python -m incognita.scripts.refresh_db
+uv run refresh-db
+# or: python -m incognita.scripts.refresh_db
 
 # Plot recent GPS data
 python -m incognita.scripts.plot_recent

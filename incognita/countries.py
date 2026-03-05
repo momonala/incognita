@@ -6,7 +6,7 @@ import pycountry
 import pydeck as pdk
 
 from incognita.config import VISITED_MAP_FILENAME
-from incognita.utils import df_from_gsheets, google_sheets_url
+from incognita.utils import google_sheets_export_csv_url, read_google_sheets_csv
 
 # Only 10 is used by get_countries_df (passport); 50 and 110 are reserved for future use.
 RESOLUTION_OPTIONS = (10, 50, 110)
@@ -102,7 +102,7 @@ def get_countries_visited(countries_df: gpd.GeoDataFrame | None = None) -> pd.Da
     """Merge countries sheet with geometries. Sheet has columns: name, year (e.g. "January 1994"). Sorted most recent first."""
     if countries_df is None:
         countries_df = get_countries_df()
-    visited_df = df_from_gsheets(google_sheets_url("countries"))
+    visited_df = read_google_sheets_csv(google_sheets_export_csv_url("countries"))
     visited_df.columns = visited_df.columns.str.strip().str.lower()
     visited_df["name"] = visited_df["name"].replace(SHEET_NAME_TO_SHAPEFILE)
     visited_df["_year_parsed"] = pd.to_datetime(visited_df["year"], format="%B %Y", errors="coerce")

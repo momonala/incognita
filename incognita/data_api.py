@@ -1,4 +1,4 @@
-"""Basic HTTP server to receive and store GPS raw_data from iPhone Overland app."""
+"""Basic HTTP server to receive and store GPS incognita_raw_data from iPhone Overland app."""
 
 import bisect
 import hashlib
@@ -192,7 +192,7 @@ def get_content_hash(features):
 @app.route("/dump", methods=["POST"])
 @log_payload_size
 def dump():
-    """Receive and store GPS GeoJSON raw_data from iPhone."""
+    """Receive and store GPS GeoJSON incognita_raw_data/ from iPhone."""
     data = request.get_data()
 
     # Parse and format JSON with indentation
@@ -203,8 +203,8 @@ def dump():
     first_timestamp = locations[0]["properties"]["timestamp"]
     year, month, day, hour, minute = get_hour(first_timestamp)
 
-    # Create directory structure: raw_data/YYYY/MM/DD/HH/
-    target_path = Path("raw_data") / year / month / day / hour
+    # Create directory structure: incognita_raw_data/YYYY/MM/DD/HH/
+    target_path = Path("incognita_raw_data") / year / month / day / hour
     target_path.mkdir(parents=True, exist_ok=True)
 
     # Generate deterministic filename using content hash

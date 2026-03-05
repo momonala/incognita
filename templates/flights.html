@@ -7,6 +7,10 @@
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.25/css/jquery.dataTables.min.css">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.js"></script>
+    <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
+    <script src="https://unpkg.com/@deck.gl/geo-layers@^9.0.0/dist.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.10.25/js/jquery.dataTables.min.js"></script>
     <script src="{{ url_for('static', filename='table_utils.js') }}"></script>
@@ -54,7 +58,7 @@
         </header>
 
         <section class="flights-map" aria-label="Flights map">
-            <iframe src="{{ flights_map_filename }}" title="Flights map" loading="lazy"></iframe>
+            <div id="flights-deck-container"></div>
         </section>
 
         <div class="flights-content">
@@ -110,5 +114,202 @@
         </footer>
         </div>
     </main>
+    <script>
+(function () {
+  var FLIGHTS_ROUTES = {{ flights_routes | tojson }};
+  var FLIGHTS_VISITED_COUNTRIES = {{ flights_visited_countries | tojson }};
+  var MAPBOX_TOKEN = {{ mapbox_api_key | tojson }};
+  if (!FLIGHTS_ROUTES.length || !MAPBOX_TOKEN) return;
+
+  var container = document.getElementById('flights-deck-container');
+  if (!container) return;
+
+  var DEG_TO_RAD = Math.PI / 180;
+  var SLERP_LINEAR_THRESHOLD = 0.9995;
+  var BEARING_DELTA_T = 0.005;
+  var PLANE_SPEED_KMH = 900;
+  var ANIMATION_SECONDS_PER_HOUR = 10;
+  var LAND_PAUSE_SEC = 1.5;
+  var DEFAULT_DISTANCE_KM = 100;
+  var PLANE_SYMBOL = '\u2708';
+  var PLANE_ICON_SIZE = 24;
+  var ROUTE_SOURCE_COLOR = [0, 255, 255];
+  var ROUTE_TARGET_COLOR = [255, 0, 255];
+  var COUNTRY_LAYER_COLOR = [0, 255, 0];
+  var TOOLTIP_STYLE = {
+    backgroundColor: 'rgba(25, 25, 25, 0.9)',
+    color: 'white',
+    border: '1px solid black',
+    padding: '8px'
+  };
+
+  function toRad(deg) { return deg * DEG_TO_RAD; }
+  function toDeg(rad) { return rad * 180 / Math.PI; }
+
+  function getCurrentTimeSeconds() {
+    return typeof performance !== 'undefined' ? performance.now() / 1000 : Date.now() / 1000;
+  }
+
+  function latLonToCartesian(lat, lon) {
+    var phi = toRad(90 - lat);
+    var theta = toRad(lon);
+    return {
+      x: Math.sin(phi) * Math.cos(theta),
+      y: Math.sin(phi) * Math.sin(theta),
+      z: Math.cos(phi)
+    };
+  }
+  function cartesianToLatLon(x, y, z) {
+    var lat = 90 - toDeg(Math.acos(z));
+    var lon = toDeg(Math.atan2(y, x));
+    return [lon, lat];
+  }
+  function slerpPosition(orig, dest, t) {
+    var o = latLonToCartesian(orig[1], orig[0]);
+    var d = latLonToCartesian(dest[1], dest[0]);
+    var dot = o.x * d.x + o.y * d.y + o.z * d.z;
+    if (dot > SLERP_LINEAR_THRESHOLD) {
+      return [orig[0] + t * (dest[0] - orig[0]), orig[1] + t * (dest[1] - orig[1])];
+    }
+    var omega = Math.acos(Math.max(-1, Math.min(1, dot)));
+    var sinOmega = Math.sin(omega);
+    var a = Math.sin((1 - t) * omega) / sinOmega;
+    var b = Math.sin(t * omega) / sinOmega;
+    return cartesianToLatLon(a * o.x + b * d.x, a * o.y + b * d.y, a * o.z + b * d.z);
+  }
+
+  function bearingDeg(lon1, lat1, lon2, lat2) {
+    var phi1 = toRad(lat1);
+    var phi2 = toRad(lat2);
+    var dLon = toRad(lon2 - lon1);
+    var y = Math.sin(dLon) * Math.cos(phi2);
+    var x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLon);
+    return (toDeg(Math.atan2(y, x)) + 360) % 360;
+  }
+
+  function getDurationSeconds(distanceKm) {
+    var d = Number(distanceKm);
+    if (!(d > 0)) d = DEFAULT_DISTANCE_KM;
+    return (d / PLANE_SPEED_KMH) * ANIMATION_SECONDS_PER_HOUR;
+  }
+
+  function getPlanePositions(globalTimeSeconds) {
+    return FLIGHTS_ROUTES.map(function (route) {
+      var flyDurationSec = getDurationSeconds(route.distance_km);
+      var cycleSec = flyDurationSec + LAND_PAUSE_SEC;
+      var posInCycle = globalTimeSeconds % cycleSec;
+      if (posInCycle < 0) posInCycle += cycleSec;
+      var t = posInCycle <= flyDurationSec ? posInCycle / flyDurationSec : 1;
+      var pos = slerpPosition(route.orig_coords, route.dest_coords, t);
+      var tNext = Math.min(1, t + BEARING_DELTA_T);
+      var posNext = slerpPosition(route.orig_coords, route.dest_coords, tNext);
+      //deck.gl TextLayer.getAngle uses screen-space rotation, not compass bearings.
+      //rotate 90 degrees to account for screen-space rotation.
+      var bearing = bearingDeg(pos[0], pos[1], posNext[0], posNext[1]);
+      var angle = (90 - bearing + 360) % 360;
+      return { position: pos, angle: angle };
+    });
+  }
+
+  var GreatCircleLayer = deck.GreatCircleLayer;
+  var TextLayer = deck.TextLayer;
+  if (!GreatCircleLayer && deck.ArcLayer) {
+    GreatCircleLayer = function (opts) {
+      var o = Object.assign({}, opts, { greatCircle: true });
+      return new deck.ArcLayer(o);
+    };
+  }
+
+  var countriesLayer = null;
+  if (FLIGHTS_VISITED_COUNTRIES && FLIGHTS_VISITED_COUNTRIES.length > 0 && deck.PolygonLayer) {
+    countriesLayer = new deck.PolygonLayer({
+      id: 'visited-countries',
+      data: FLIGHTS_VISITED_COUNTRIES,
+      getPolygon: function (d) { return d.geometry && d.geometry.coordinates; },
+      getFillColor: COUNTRY_LAYER_COLOR,
+      getLineColor: COUNTRY_LAYER_COLOR,
+      getLineWidth: 1,
+      lineWidthMinPixels: 1,
+      opacity: 0.2,
+      filled: true,
+      pickable: true
+    });
+  }
+
+  var greatCircleLayer = new GreatCircleLayer({
+    id: 'flight-routes',
+    data: FLIGHTS_ROUTES,
+    getSourcePosition: function (d) { return d.orig_coords; },
+    getTargetPosition: function (d) { return d.dest_coords; },
+    getSourceColor: ROUTE_SOURCE_COLOR,
+    getTargetColor: ROUTE_TARGET_COLOR,
+    getStrokeWidth: 20,
+    widthMinPixels: 2,
+    pickable: true
+  });
+
+  function makePlaneLayer(data, timeSec) {
+    return new TextLayer({
+      id: 'planes',
+      data: data,
+      getPosition: function (d) { return d.position; },
+      getAngle: function (d) { return d.angle; },
+      getText: function () { return PLANE_SYMBOL; },
+      getSize: PLANE_ICON_SIZE,
+      getTextAnchor: 'middle',
+      getAlignmentBaseline: 'center',
+      getColor: [255, 255, 255],
+      characterSet: PLANE_SYMBOL,
+      updateTriggers: { getPosition: { time: timeSec }, getAngle: { time: timeSec } }
+    });
+  }
+
+  function buildCountryTooltipHtml(obj) {
+    var parts = [];
+    parts.push('<div style="font-family: \'Helvetica Neue\',Helvetica,Arial,sans-serif; font-weight: 200; padding: 4px 0;">');
+    parts.push('<div><strong>' + obj.flag + ' ' + obj.name + '</strong></div>');
+    parts.push('<div>' + obj.flight_count + ' flight' + (obj.flight_count !== 1 ? 's' : '') + '</div>');
+    if (obj.sample_flights && obj.sample_flights.length > 0) {
+      for (var i = 0; i < obj.sample_flights.length; i++) {
+        parts.push('<div style="font-size: 11px; margin-top: 2px;">' + obj.sample_flights[i] + '</div>');
+      }
+    }
+    parts.push('</div>');
+    return parts.join('');
+  }
+
+  function getTooltip(info) {
+    if (!info || !info.object) return null;
+    var obj = info.object;
+    var isCountryHover = obj.flag !== undefined && obj.name !== undefined;
+    if (!isCountryHover) return null;
+    return { html: buildCountryTooltipHtml(obj), style: TOOLTIP_STYLE };
+  }
+
+  var baseLayers = countriesLayer ? [countriesLayer, greatCircleLayer] : [greatCircleLayer];
+  var startTime = getCurrentTimeSeconds();
+
+  var deckInstance = new deck.DeckGL({
+    container: container,
+    mapboxApiAccessToken: MAPBOX_TOKEN,
+    mapStyle: 'mapbox://styles/mapbox/dark-v11',
+    mapOptions: { projection: 'mercator' },
+    initialViewState: { latitude: 30, longitude: 0, zoom: 1, bearing: 0, pitch: 0 },
+    controller: true,
+    getTooltip: getTooltip,
+    layers: baseLayers.concat([makePlaneLayer(getPlanePositions(0), 0)])
+  });
+
+  function animate() {
+    var elapsed = getCurrentTimeSeconds() - startTime;
+    var positions = getPlanePositions(elapsed);
+    deckInstance.setProps({
+      layers: baseLayers.concat([makePlaneLayer(positions, elapsed)])
+    });
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+})();
+    </script>
 </body>
 </html>
