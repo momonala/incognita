@@ -5,7 +5,7 @@ from pathlib import Path
 
 from flask import Flask, render_template, request, send_from_directory
 
-from incognita.config import GPS_MAP_FILENAME, VISITED_MAP_FILENAME
+from incognita.config import DASHBOARD_PORT, GPS_MAP_FILENAME, VISITED_MAP_FILENAME
 from incognita.countries import (
     get_countries_df,
     get_countries_visited,
@@ -25,7 +25,6 @@ from incognita.flights import (
 from incognita.gps_trips_renderer import get_trips_for_date_range, render_trips_to_file
 from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX, google_sheets_document_url
 from incognita.values import MAPBOX_API_KEY
-from incognita.config import DASHBOARD_PORT
 
 GPS_DEFAULT_DAYS_BACK = 30
 DATE_FMT = "%Y-%m-%d"

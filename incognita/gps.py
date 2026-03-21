@@ -29,7 +29,7 @@ def get_filtered_gps_df(
 ) -> pd.DataFrame:
     """Single code path: load GPS points (speed>0, accuracy), add speed, filter by segment distance.
 
-    Used by dashboard and by GET /coordinates so filtering stays in one place.
+    Used by the DB-backed GET /coordinates endpoint.
     """
     gdf = get_gdf_for_map(date_min, date_max, min_accuracy=min_accuracy_m)
     if gdf.empty:

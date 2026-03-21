@@ -58,6 +58,9 @@ config = "incognita.config:main"
 data-api = "incognita.data_api:main"
 refresh-db = "incognita.scripts.refresh_db:main"
 
+[tool.uv]
+exclude-newer = "1 week"
+
 [tool.black]
 line-length = 110
 target-version = ['py312']

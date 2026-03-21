@@ -129,11 +129,10 @@ def get_gdf_for_map(
     min_accuracy: float = 100.0,
     db_filename: str = DB_FILE,
 ) -> pd.DataFrame:
-    """Return GPS points for the map with same filtering as /coordinates API.
+    """Return GPS points for the DB-backed /coordinates API.
 
     Only moving points (speed > 0) with horizontal_accuracy <= min_accuracy
-    in the given timestamp range. Used by the dashboard GPS route to align
-    with the coordinates endpoint.
+    in the given timestamp range.
 
     Returns:
         DataFrame with columns lon, lat, timestamp, accuracy, speed.

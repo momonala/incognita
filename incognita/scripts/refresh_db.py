@@ -37,8 +37,7 @@ def main():
         conn.execute("PRAGMA cache_size=10000")
 
         # Create table upfront to avoid race conditions in parallel processing
-        conn.execute(
-            f"""
+        conn.execute(f"""
             CREATE TABLE IF NOT EXISTS {DB_NAME} (
                 lon REAL,
                 lat REAL,
@@ -49,8 +48,7 @@ def main():
                 motion TEXT,
                 geojson_file TEXT
             )
-        """
-        )
+        """)
         conn.commit()
 
     geo_files = sorted(root_dir.rglob("*.geojson"))

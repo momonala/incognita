@@ -10,11 +10,7 @@ import pydeck as pdk
 from incognita.config import FLIGHTS_MAP_FILENAME
 from incognita.countries import get_countries_df
 from incognita.geo_distance import get_haversine_dist
-from incognita.utils import (
-    DEFAULT_MAP_BOX,
-    google_sheets_export_csv_url,
-    read_google_sheets_csv,
-)
+from incognita.utils import DEFAULT_MAP_BOX, google_sheets_export_csv_url, read_google_sheets_csv
 from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
 
 AIRPORT_DB = airportsdata.load("IATA")

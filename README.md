@@ -100,10 +100,10 @@ Available routes:
 - `/gps` - GPS tracking map
 - `/flights` - Flight history and statistics
 - `/passport` - Countries visited visualization
-
+```
 ## Project Structure
 
-```
+```bash
 incognita/
 ├── incognita/
 │   ├── app.py                  # Main Flask web app (port 5004)
@@ -145,7 +145,7 @@ incognita/
 | `/status` | GET | Server status |
 | `/dump` | POST | Receive GeoJSON location data from Overland app |
 | `/heartbeat` | POST | Heartbeat endpoint for monitoring |
-| `/coordinates` | GET | Fetch coordinates with filters |
+| `/coordinates` | GET | Fetch simplified coordinates from raw GPS files |
 
 ### Web App (`:5004`)
 
@@ -160,8 +160,6 @@ incognita/
 
 Query params:
 - `lookback_hours` - Number of hours to look back (default: 24)
-- `min_accuracy` - Minimum horizontal accuracy in meters (default: 200)
-- `max_distance` - Maximum distance between points in km (default: 0.1)
 
 Response:
 ```json
@@ -169,10 +167,14 @@ Response:
   "status": "success",
   "count": 1234,
   "lookback_hours": 24,
-  "min_accuracy": 200,
-  "max_distance": 0.1,
-  "coordinates": [
-    ["2025-01-01T12:00:00Z", 52.5200, 13.4050, 15.5],
+  "paths": [
+    [
+      {
+        "timestamp": "2025-01-01T12:00:00Z",
+        "latitude": 52.5200,
+        "longitude": 13.4050
+      }
+    ],
     ...
   ]
 }

@@ -6,16 +6,15 @@ import json
 import logging
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 
-import pandas as pd
 import requests
 from flask import Flask, Response, jsonify, request
 
 from incognita.database import update_db
-from incognita.gps import get_filtered_gps_df
+from incognita.gps_trips_renderer import get_trip_points_for_date_range
 from incognita.utils import get_ip_address
 from incognita.values import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 
@@ -27,6 +26,9 @@ app = Flask(__name__)
 
 overland_port = 5003
 last_heartbeat = datetime.now()
+
+DEFAULT_LOOKBACK_HOURS = 24
+TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 # Global variable to store the last sent Telegram message ID
 last_message_id: int | None = None
@@ -189,6 +191,37 @@ def get_content_hash(features):
     return hashlib.md5(hash_input).hexdigest()[:7]
 
 
+def _get_coordinates_window(lookback_hours: int) -> tuple[datetime, datetime]:
+    """Return the UTC window used by the coordinates endpoints."""
+    end_dt = datetime.now(timezone.utc)
+    start_dt = end_dt - timedelta(hours=lookback_hours)
+    return start_dt, end_dt
+
+
+def _format_ts_for_api(ts: float) -> str:
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(TIMESTAMP_FMT)
+
+
+def _trip_points_to_api_paths(start_dt: datetime, end_dt: datetime) -> list[list[dict[str, float | str]]]:
+    """Return segmented simplified trip paths for the requested window.
+
+    Keep trips separated so clients can render one polyline per trip and avoid
+    drawing straight jumps across telemetry gaps.
+    """
+    trip_points = get_trip_points_for_date_range(start_dt, end_dt) or []
+    return [
+        [
+            {
+                "timestamp": _format_ts_for_api(ts),
+                "latitude": lat,
+                "longitude": lon,
+            }
+            for lon, lat, ts in path
+        ]
+        for path in trip_points
+    ]
+
+
 @app.route("/dump", methods=["POST"])
 @log_payload_size
 def dump():
@@ -222,61 +255,25 @@ def dump():
     return jsonify({"result": "ok"})
 
 
-KM_TO_M = 1000  # max_distance query param is in km; get_filtered_gps_df expects meters
-
-
 @app.route("/coordinates", methods=["GET"])
 @log_payload_size
 def get_coordinates():
-    """Return list of (timestamp, lat, lon, accuracy) from database.
-
-    Query Parameters:
-        lookback_hours: Optional[int] - hours to look back (default: 24)
-        min_accuracy: Optional[float] - minimum accuracy in meters (default: 200)
-        max_distance: Optional[float] - max segment distance in km (default: 0.1 = 100 m)
-    """
+    """Return simplified trip coordinates from raw GPS files."""
     try:
-        lookback_hours = request.args.get("lookback_hours", default=24, type=int)
-        min_accuracy = request.args.get("min_accuracy", default=200, type=float)
-        max_distance_km = request.args.get("max_distance", default=0.1, type=float)
+        lookback_hours = request.args.get("lookback_hours", default=DEFAULT_LOOKBACK_HOURS, type=int)
+        if lookback_hours <= 0:
+            return jsonify({"status": "error", "message": "lookback_hours must be positive"}), 400
 
-        for arg in [lookback_hours, min_accuracy, max_distance_km]:
-            if arg <= 0:
-                return jsonify({"status": "error", "message": f"{arg} must be positive"}), 400
-
-        max_distance_m = max_distance_km * KM_TO_M
-        end_ts = pd.Timestamp.now(tz="UTC")
-        start_ts = end_ts - pd.Timedelta(hours=lookback_hours)
-        date_min = start_ts.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
-        date_max = end_ts.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
-
-        logger.info(
-            "Fetching coordinates lookback_hours=%s min_accuracy=%s max_distance_km=%s",
-            lookback_hours,
-            min_accuracy,
-            max_distance_km,
-        )
-        gdf = get_filtered_gps_df(
-            date_min, date_max, min_accuracy_m=min_accuracy, max_distance_m=max_distance_m
-        )
-        coordinates = [
-            (
-                row["timestamp"].strftime("%Y-%m-%dT%H:%M:%SZ"),
-                row["lat"],
-                row["lon"],
-                row["accuracy"],
-            )
-            for _, row in gdf.iterrows()
-        ]
-
+        start_dt, end_dt = _get_coordinates_window(lookback_hours)
+        logger.info("Fetching file-backed coordinates lookback_hours=%s", lookback_hours)
+        paths = _trip_points_to_api_paths(start_dt, end_dt)
+        coordinate_count = sum(len(path) for path in paths)
         return jsonify(
             {
                 "status": "success",
-                "count": len(coordinates),
+                "count": coordinate_count,
                 "lookback_hours": lookback_hours,
-                "min_accuracy": min_accuracy,
-                "max_distance": max_distance_km,
-                "coordinates": coordinates,
+                "paths": paths,
             }
         )
 
