@@ -12,7 +12,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from incognita.data_models import GeoCoords
-from incognita.database import get_gdf_from_db
+from incognita.gps_trips_renderer import RAW_DATA_ROOT, _load_month_points
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,6 +35,49 @@ VIDEO_HEIGHT = 1080
 BERLIN_CENTER = GeoCoords(52.511626, 13.395842)
 # Half-width in degrees (lat); lon half-width is derived from canvas aspect to fill frame
 LAT_HALF_WIDTH = 0.205 * 0.75
+
+
+def _load_all_points_from_files() -> pd.DataFrame:
+    """Load all raw GPS points from incognita_raw_data/YYYY/MM/*.geojson."""
+    if not RAW_DATA_ROOT.exists():
+        logger.info("[_load_all_points_from_files] RAW_DATA_ROOT %s does not exist", RAW_DATA_ROOT)
+        return pd.DataFrame(columns=["lon", "lat", "timestamp"])
+
+    months: list[tuple[int, int]] = []
+    for year_path in RAW_DATA_ROOT.iterdir():
+        if not year_path.is_dir():
+            continue
+        try:
+            year = int(year_path.name)
+        except ValueError:
+            continue
+        for month_path in year_path.iterdir():
+            if not month_path.is_dir():
+                continue
+            try:
+                month = int(month_path.name)
+            except ValueError:
+                continue
+            months.append((year, month))
+
+    if not months:
+        logger.info("[_load_all_points_from_files] No year/month directories found under %s", RAW_DATA_ROOT)
+        return pd.DataFrame(columns=["lon", "lat", "timestamp"])
+
+    months.sort()
+    frames: list[pd.DataFrame] = []
+    for year, month in months:
+        df_month = _load_month_points(year, month)
+        if not df_month.empty:
+            frames.append(df_month)
+
+    if not frames:
+        logger.info("[_load_all_points_from_files] No data points found in any month")
+        return pd.DataFrame(columns=["lon", "lat", "timestamp"])
+
+    gdf = pd.concat(frames, ignore_index=True)
+    logger.info("[_load_all_points_from_files] Loaded %s data points from files", gdf.shape[0])
+    return gdf
 
 
 def remove_data_outside_region(
@@ -193,9 +236,8 @@ def main(
     lon_half_width = _lon_half_width(canvas_w, canvas_h, LAT_HALF_WIDTH, center.lat)
     map_w, map_h = canvas_w, canvas_h
 
-    date_min, date_max = None, None
-    gdf = get_gdf_from_db(date_min=date_min, date_max=date_max)
-    logger.info("[main] Fetched %s data points in DB", gdf.shape)
+    gdf = _load_all_points_from_files()
+    logger.info("[main] Fetched %s data points from files", gdf.shape)
     gdf_ber = remove_data_outside_region(gdf, center, LAT_HALF_WIDTH, lon_half_width)
     gdf_ber = scale_data(gdf_ber, center.lat, map_h, map_w)
     by_minute, minute_to_time = build_by_minute(gdf_ber, map_h, map_w)
