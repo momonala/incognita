@@ -2,7 +2,7 @@
 
 import pytest
 
-from incognita.data_api import app, format_downtime
+from incognita.data_api import EARLIEST_HISTORY_DT, app, format_downtime
 
 
 @pytest.mark.parametrize(
@@ -114,3 +114,75 @@ def test_coordinates_preserves_trip_segments(monkeypatch):
             },
         ],
     ]
+
+
+def test_coordinates_bbox_filters_by_first_point(monkeypatch):
+    """Region-mode bbox keeps only trips whose first point is inside the bbox.
+
+    The fake renderer returns three trips. Only the first one starts inside the
+    Berlin-ish bbox; the second starts in Paris and the third is empty.
+    """
+    captured: dict[str, object] = {}
+
+    def fake_get_trip_points_for_date_range(start_dt, end_dt):
+        captured["start_dt"] = start_dt
+        captured["end_dt"] = end_dt
+        return [
+            [[13.405, 52.52, 1735732800.0], [13.41, 52.53, 1735736400.0]],
+            [[2.35, 48.85, 1735740000.0], [2.36, 48.86, 1735743600.0]],
+            [],
+        ]
+
+    monkeypatch.setattr(
+        "incognita.data_api.get_trip_points_for_date_range", fake_get_trip_points_for_date_range
+    )
+
+    with app.test_client() as client:
+        response = client.get(
+            "/coordinates"
+            "?min_lat=52.4&max_lat=52.6&min_lon=13.0&max_lon=13.7"
+            "&lookback_hours=24"  # should be ignored in region mode
+        )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "success"
+    assert payload["lookback_hours"] is None
+    assert payload["bbox"] == {
+        "min_lat": 52.4,
+        "max_lat": 52.6,
+        "min_lon": 13.0,
+        "max_lon": 13.7,
+    }
+    assert payload["count"] == 2
+    assert len(payload["paths"]) == 1
+    assert payload["paths"][0][0] == {
+        "timestamp": "2025-01-01T12:00:00Z",
+        "latitude": 52.52,
+        "longitude": 13.405,
+    }
+    assert captured["start_dt"] == EARLIEST_HISTORY_DT
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "?min_lat=52.4",
+        "?min_lat=52.4&max_lat=52.6",
+        "?min_lat=52.4&max_lat=52.6&min_lon=13.0",
+        "?max_lat=52.6&min_lon=13.0&max_lon=13.7",
+    ],
+)
+def test_coordinates_partial_bbox_returns_400(monkeypatch, query):
+    """Partial bbox must fail with HTTP 400 and never hit the renderer."""
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("renderer should not be called for invalid bbox")
+
+    monkeypatch.setattr("incognita.data_api.get_trip_points_for_date_range", fail_if_called)
+
+    with app.test_client() as client:
+        response = client.get(f"/coordinates{query}")
+
+    assert response.status_code == 400
+    assert response.get_json()["status"] == "error"

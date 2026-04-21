@@ -38,23 +38,19 @@
             <iframe src="{{ map_filename }}" title="GPS track map" loading="lazy"></iframe>
         </section>
     </main>
+
+    <script>
+        $(function () {
+            $("#start_date, #end_date").datepicker({
+                dateFormat: 'yy-mm-dd'
+            });
+
+            $("#start_date, #end_date").on("keydown", function (event) {
+                if (event.key === "Enter") {
+                    $("#date_form").submit();
+                }
+            });
+        });
+    </script>
 </body>
-
-<script>
-    $(function () {
-        $("#start_date").datepicker({
-            dateFormat: 'yy-mm-dd'
-        });
-        $("#end_date").datepicker({
-            dateFormat: 'yy-mm-dd'
-        });
-
-        $("#start_date, #end_date").on("keydown", function (event) {
-            if (event.key === "Enter") {
-                $("#date_form").submit();
-            }
-        });
-    });
-</script>
-
 </html>

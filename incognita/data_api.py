@@ -29,6 +29,8 @@ last_heartbeat = datetime.now()
 
 DEFAULT_LOOKBACK_HOURS = 24
 TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
+EARLIEST_HISTORY_DT = datetime(2021, 10, 1, tzinfo=timezone.utc)
+BBOX_PARAMS = ("min_lat", "max_lat", "min_lon", "max_lon")
 
 # Global variable to store the last sent Telegram message ID
 last_message_id: int | None = None
@@ -202,13 +204,12 @@ def _format_ts_for_api(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(TIMESTAMP_FMT)
 
 
-def _trip_points_to_api_paths(start_dt: datetime, end_dt: datetime) -> list[list[dict[str, float | str]]]:
-    """Return segmented simplified trip paths for the requested window.
+def _format_trip_paths(trips: list[list[list[float]]]) -> list[list[dict[str, float | str]]]:
+    """Convert raw [lon, lat, ts] trip points into the API path schema.
 
-    Keep trips separated so clients can render one polyline per trip and avoid
+    Trips stay separated so clients can render one polyline per trip and avoid
     drawing straight jumps across telemetry gaps.
     """
-    trip_points = get_trip_points_for_date_range(start_dt, end_dt) or []
     return [
         [
             {
@@ -218,8 +219,53 @@ def _trip_points_to_api_paths(start_dt: datetime, end_dt: datetime) -> list[list
             }
             for lon, lat, ts in path
         ]
-        for path in trip_points
+        for path in trips
     ]
+
+
+def _filter_trips_by_first_point_bbox(
+    trips: list[list[list[float]]],
+    min_lat: float,
+    max_lat: float,
+    min_lon: float,
+    max_lon: float,
+) -> list[list[list[float]]]:
+    """Keep only trips whose first linestring point falls inside the bbox."""
+    kept: list[list[list[float]]] = []
+    for path in trips:
+        if not path:
+            continue
+        lon, lat, _ = path[0]
+        if min_lat <= lat <= max_lat and min_lon <= lon <= max_lon:
+            kept.append(path)
+    return kept
+
+
+def _parse_bbox_args() -> tuple[float, float, float, float] | None:
+    """Return bbox as (min_lat, max_lat, min_lon, max_lon) or None when absent.
+
+    Raises:
+        ValueError: If only some of the four bbox params are present, or if any
+            value is not a float, or if min > max for either axis.
+    """
+    present = [name for name in BBOX_PARAMS if request.args.get(name) is not None]
+    if not present:
+        return None
+    if len(present) != len(BBOX_PARAMS):
+        missing = [name for name in BBOX_PARAMS if name not in present]
+        raise ValueError(f"bbox requires all of {BBOX_PARAMS}; missing: {missing}")
+
+    try:
+        min_lat = float(request.args["min_lat"])
+        max_lat = float(request.args["max_lat"])
+        min_lon = float(request.args["min_lon"])
+        max_lon = float(request.args["max_lon"])
+    except ValueError as exc:
+        raise ValueError(f"bbox params must be floats: {exc}") from exc
+
+    if min_lat > max_lat or min_lon > max_lon:
+        raise ValueError("bbox requires min_lat <= max_lat and min_lon <= max_lon")
+    return min_lat, max_lat, min_lon, max_lon
 
 
 @app.route("/dump", methods=["POST"])
@@ -258,28 +304,75 @@ def dump():
 @app.route("/coordinates", methods=["GET"])
 @log_payload_size
 def get_coordinates():
-    """Return simplified trip coordinates from raw GPS files."""
+    """Return simplified trip coordinates.
+
+    Two modes:
+      - Time mode (default): `?lookback_hours=N` returns trips from the last N hours.
+      - Region mode: `?min_lat=&max_lat=&min_lon=&max_lon=` scans all history since
+        EARLIEST_HISTORY_DT and returns only trips whose first linestring point
+        falls inside the bbox. `lookback_hours` is ignored.
+    """
     try:
-        lookback_hours = request.args.get("lookback_hours", default=DEFAULT_LOOKBACK_HOURS, type=int)
-        if lookback_hours <= 0:
-            return jsonify({"status": "error", "message": "lookback_hours must be positive"}), 400
+        bbox = _parse_bbox_args()
+    except ValueError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
 
-        start_dt, end_dt = _get_coordinates_window(lookback_hours)
-        logger.info("Fetching file-backed coordinates lookback_hours=%s", lookback_hours)
-        paths = _trip_points_to_api_paths(start_dt, end_dt)
-        coordinate_count = sum(len(path) for path in paths)
-        return jsonify(
-            {
-                "status": "success",
-                "count": coordinate_count,
-                "lookback_hours": lookback_hours,
-                "paths": paths,
-            }
-        )
-
+    try:
+        if bbox is not None:
+            return _get_coordinates_by_bbox(bbox)
+        return _get_coordinates_by_lookback()
     except Exception as e:
         logger.error(f"Error fetching coordinates: {str(e)}")
         return jsonify({"status": "error", "message": f"Failed to fetch coordinates: {str(e)}"}), 500
+
+
+def _get_coordinates_by_lookback():
+    lookback_hours = request.args.get("lookback_hours", default=DEFAULT_LOOKBACK_HOURS, type=int)
+    if lookback_hours <= 0:
+        return jsonify({"status": "error", "message": "lookback_hours must be positive"}), 400
+
+    start_dt, end_dt = _get_coordinates_window(lookback_hours)
+    logger.info("Fetching file-backed coordinates lookback_hours=%s", lookback_hours)
+    trip_points = get_trip_points_for_date_range(start_dt, end_dt) or []
+    paths = _format_trip_paths(trip_points)
+    return jsonify(
+        {
+            "status": "success",
+            "count": sum(len(path) for path in paths),
+            "lookback_hours": lookback_hours,
+            "paths": paths,
+        }
+    )
+
+
+def _get_coordinates_by_bbox(bbox: tuple[float, float, float, float]):
+    min_lat, max_lat, min_lon, max_lon = bbox
+    end_dt = datetime.now(timezone.utc)
+    logger.info(
+        "Fetching file-backed coordinates region mode bbox=(%s,%s,%s,%s) since %s",
+        min_lat,
+        max_lat,
+        min_lon,
+        max_lon,
+        EARLIEST_HISTORY_DT.isoformat(),
+    )
+    trip_points = get_trip_points_for_date_range(EARLIEST_HISTORY_DT, end_dt) or []
+    in_region = _filter_trips_by_first_point_bbox(trip_points, min_lat, max_lat, min_lon, max_lon)
+    paths = _format_trip_paths(in_region)
+    return jsonify(
+        {
+            "status": "success",
+            "count": sum(len(path) for path in paths),
+            "lookback_hours": None,
+            "bbox": {
+                "min_lat": min_lat,
+                "max_lat": max_lat,
+                "min_lon": min_lon,
+                "max_lon": max_lon,
+            },
+            "paths": paths,
+        }
+    )
 
 
 def main():

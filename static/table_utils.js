@@ -14,10 +14,10 @@ $(document).ready(function () {
                     const title = $(column.header()).text();
                     const input = document.createElement("input");
                     input.placeholder = "Search " + title;
-                    $(column.footer()).html(input);
-                    $(input).on('keyup', function () {
-                        if (column.search() !== this.value) {
-                            column.search(this.value).draw();
+                    $(column.footer()).empty().append(input);
+                    input.addEventListener('input', function () {
+                        if (column.search() !== input.value) {
+                            column.search(input.value).draw();
                         }
                     });
                 });
