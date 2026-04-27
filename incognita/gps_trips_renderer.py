@@ -3,7 +3,7 @@ import logging
 import os
 import platform
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import joblib
@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from incognita.data_models import GeoBoundingBox, TripDisplayStats
+from incognita.data_models import GeoBoundingBox, LiveLocationSnapshot, TripDisplayStats
 from incognita.database import extract_properties_from_geojson, read_geojson_file
 from incognita.gps import gps_df_to_deck_map
 from incognita.gps_point_series import add_speed_to_gdf
@@ -29,6 +29,13 @@ GPS_POINT_COLUMNS = ["lon", "lat", "timestamp"]
 METERS_PER_DEGREE = 111_000.0
 MAX_WORKERS_CAP = 32
 CPU_EXTRA_WORKERS = 4
+
+# Shared segmentation/simplification defaults used by all public trip-loading functions.
+DEFAULT_MAX_GAP_SECONDS = 60.0
+DEFAULT_MAX_GAP_METERS = 100.0
+DEFAULT_MIN_POINTS = 10
+DEFAULT_SIMPLIFY_TOLERANCE_M = 5.0
+LATEST_POINT_LOOKBACK_DAYS = 7
 
 memory = joblib.Memory(location=Path(".cache"), verbose=0)
 
@@ -351,10 +358,10 @@ def _truncate_trip_points_to_date_range(
 def get_trip_points_for_date_range(
     start: datetime,
     end: datetime,
-    max_gap_seconds: float = 60.0,
-    max_gap_meters: float = 100.0,
-    min_points: int = 10,
-    simplify_tolerance_m: float = 5.0,
+    max_gap_seconds: float = DEFAULT_MAX_GAP_SECONDS,
+    max_gap_meters: float = DEFAULT_MAX_GAP_METERS,
+    min_points: int = DEFAULT_MIN_POINTS,
+    simplify_tolerance_m: float = DEFAULT_SIMPLIFY_TOLERANCE_M,
 ) -> list[list[list[float]]] | None:
     """Return simplified trip paths with timestamps for the requested date range."""
     if start > end:
@@ -411,10 +418,10 @@ def get_trip_points_for_date_range(
 def get_trips_for_date_range(
     start: datetime,
     end: datetime,
-    max_gap_seconds: float = 60.0,
-    max_gap_meters: float = 100.0,
-    min_points: int = 10,
-    simplify_tolerance_m: float = 5.0,
+    max_gap_seconds: float = DEFAULT_MAX_GAP_SECONDS,
+    max_gap_meters: float = DEFAULT_MAX_GAP_METERS,
+    min_points: int = DEFAULT_MIN_POINTS,
+    simplify_tolerance_m: float = DEFAULT_SIMPLIFY_TOLERANCE_M,
 ) -> tuple[list[list[list[float]]] | None, TripDisplayStats]:
     """Load and prepare trip paths for the date range. Does not write any file.
 
@@ -436,6 +443,66 @@ def get_trips_for_date_range(
     track_points = sum(len(p) for p in paths_for_map)
     stats = TripDisplayStats(track_points=track_points, trips_count=len(paths_for_map))
     return paths_for_map, stats
+
+
+def get_latest_location_snapshot(
+    max_gap_seconds: float = DEFAULT_MAX_GAP_SECONDS,
+    max_gap_meters: float = DEFAULT_MAX_GAP_METERS,
+    min_points: int = DEFAULT_MIN_POINTS,
+    simplify_tolerance_m: float = DEFAULT_SIMPLIFY_TOLERANCE_M,
+) -> LiveLocationSnapshot | None:
+    """Return the most recent GPS fix and that day's simplified trip paths, or None.
+
+    Walks backwards up to LATEST_POINT_LOOKBACK_DAYS from today. Returns the last
+    recorded point of the first non-empty day found, together with all trip paths
+    for that same day (so the day is loaded exactly once).
+
+    Args:
+        max_gap_seconds: Time gap (s) that splits a continuous segment into two trips.
+        max_gap_meters: Distance gap (m) that splits a continuous segment into two trips.
+        min_points: Minimum number of raw points for a segment to be kept as a trip.
+        simplify_tolerance_m: Douglas–Peucker tolerance in metres for path simplification.
+
+    Returns:
+        LiveLocationSnapshot with lat, lon, UTC timestamp, and day paths; or None.
+    """
+    now = datetime.now(timezone.utc)
+    for days_back in range(LATEST_POINT_LOOKBACK_DAYS):
+        date = now - timedelta(days=days_back)
+        day_root = _day_root(date.year, date.month, date.day)
+        if not day_root.exists():
+            continue
+        df = _load_day_points(date.year, date.month, date.day)
+        if df.empty:
+            continue
+
+        latest = df.iloc[-1]
+        logger.info(
+            "[get_latest_location_snapshot] found point at %04d-%02d-%02d | %s",
+            date.year,
+            date.month,
+            date.day,
+            latest["timestamp"],
+        )
+        trip_paths_with_ts = _gdf_to_simplified_trip_paths(
+            df,
+            max_gap_seconds=max_gap_seconds,
+            max_gap_meters=max_gap_meters,
+            min_points=min_points,
+            simplify_tolerance_m=simplify_tolerance_m,
+            source_label=f"live {date.year}-{date.month:02d}-{date.day:02d}",
+        )
+        return LiveLocationSnapshot(
+            lat=float(latest["lat"]),
+            lon=float(latest["lon"]),
+            timestamp=latest["timestamp"].to_pydatetime(),
+            day_paths=trip_paths_with_ts,
+        )
+
+    logger.warning(
+        "[get_latest_location_snapshot] no GPS data in the last %d days", LATEST_POINT_LOOKBACK_DAYS
+    )
+    return None
 
 
 def render_trips_to_file(

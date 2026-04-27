@@ -5,6 +5,14 @@
 
 Personal GPS tracking and travel visualization system. Collects location data from a GPS app ([Trace](https://github.com/momonala/Trace) or [Overland](https://github.com/aaronpk/Overland-iOS)) and provides interactive dashboards for GPS tracking, flight history, and countries visited.
 
+## Screenshots
+
+![GPS trip tracks overlaid on a satellite map](static/img/gps_trips_map.png)
+*GPS trip tracks for a date range, visualized on a satellite map*
+
+![Global flights map with animated routes](static/img/flights_global_map.png)
+*Global flight history with animated routes and travel statistics*
+
 ## Tech Stack
 
 Python 3.12, Flask 3.x, SQLite, pandas, GeoPandas, PyDeck, Plotly
@@ -35,6 +43,7 @@ flowchart LR
 
 - **GPS Tracking**: Receive and store location data from Overland app
 - **Interactive Maps**: Visualize GPS tracks with PyDeck/Deck.gl
+- **Live Location**: Real-time map showing most recent GPS fix with animated day-path replay and staleness indicator
 - **Flight Tracking**: Analyze flight history with statistics and visualizations
 - **Countries Visited**: Track and visualize countries visited with passport-style view
 - **Heartbeat Monitoring**: Telegram alerts for data streaming downtime
@@ -100,6 +109,7 @@ Available routes:
 - `/gps` - GPS tracking map
 - `/flights` - Flight history and statistics
 - `/passport` - Countries visited visualization
+- `/live` - Live location with animated day-path replay
 ```
 ## Project Structure
 
@@ -155,6 +165,7 @@ incognita/
 | `/gps` | GET/POST | GPS tracking map (date range selection) |
 | `/flights` | GET | Flight history dashboard |
 | `/passport` | GET | Countries visited visualization |
+| `/live` | GET | Live location map with animated day-path replay |
 
 ### `/coordinates`
 

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass
@@ -22,6 +23,16 @@ class GeoBoundingBox:
         self.sw = GeoCoords(center.lat - width, center.lon - width)
         self.ne = GeoCoords(center.lat + width, center.lon + width)
         self.name = name
+
+
+@dataclass(frozen=True)
+class LiveLocationSnapshot:
+    """Most recent GPS fix and the full day's simplified trip paths."""
+
+    lat: float
+    lon: float
+    timestamp: datetime  # timezone-aware UTC
+    day_paths: list[list[list[float]]]  # per trip: [[lon, lat, unix_ts_sec], ...]
 
 
 @dataclass(frozen=True)

@@ -22,13 +22,19 @@ from incognita.flights import (
     get_flights_stats,
     get_flights_visited_countries_for_map,
 )
-from incognita.gps_trips_renderer import get_trips_for_date_range, render_trips_to_file
+from incognita.gps_trips_renderer import (
+    get_latest_location_snapshot,
+    get_trips_for_date_range,
+    render_trips_to_file,
+)
 from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX, google_sheets_document_url
 from incognita.values import MAPBOX_API_KEY
 
 GPS_DEFAULT_DAYS_BACK = 30
 DATE_FMT = "%Y-%m-%d"
 FLIGHTS_TABLE_DATE_FMT = "%Y.%m.%d"
+LIVE_STALENESS_GREEN_MINUTES = 5
+LIVE_STALENESS_YELLOW_MINUTES = 15
 
 _base_dir = Path(__file__).parent.parent
 app = Flask(
@@ -146,6 +152,36 @@ def gps():
         track_points=stats.track_points,
         trips_count=stats.trips_count,
         file_size_mb=file_size_mb,
+    )
+
+
+def _staleness_color(timestamp: datetime) -> str:
+    """Return CSS color class based on how old the GPS fix is."""
+    age_minutes = (datetime.now(timezone.utc) - timestamp).total_seconds() / 60
+    if age_minutes <= LIVE_STALENESS_GREEN_MINUTES:
+        return "live-fresh"
+    if age_minutes <= LIVE_STALENESS_YELLOW_MINUTES:
+        return "live-stale"
+    return "live-old"
+
+
+@app.route("/live")
+def live():
+    """Render live location page showing the most recent GPS point on an animated map."""
+    snapshot = get_latest_location_snapshot()
+    if snapshot is None:
+        return render_template("live.html", no_data=True, mapbox_api_key=MAPBOX_API_KEY)
+    return render_template(
+        "live.html",
+        no_data=False,
+        lat=snapshot.lat,
+        lon=snapshot.lon,
+        last_updated_iso=snapshot.timestamp.isoformat(),
+        staleness_color=_staleness_color(snapshot.timestamp),
+        staleness_green_ms=LIVE_STALENESS_GREEN_MINUTES * 60 * 1000,
+        staleness_yellow_ms=LIVE_STALENESS_YELLOW_MINUTES * 60 * 1000,
+        day_paths=snapshot.day_paths,
+        mapbox_api_key=MAPBOX_API_KEY,
     )
 
 

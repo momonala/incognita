@@ -629,6 +629,114 @@ tfoot input {
     /* inherits from .map-page__map */
 }
 
+/* Live page — full-bleed map with floating overlay */
+.live-page {
+    height: calc(100vh - var(--nav-height));
+    position: relative;
+    overflow: hidden;
+}
+
+.live-map {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+#live-deck-container {
+    position: absolute;
+    inset: 0;
+}
+
+.live-overlay {
+    position: absolute;
+    top: var(--space-lg);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 999px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.14), 0 1px 4px rgba(0, 0, 0, 0.08);
+    white-space: nowrap;
+    pointer-events: auto;
+}
+
+/* Status dot */
+.live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: background-color 0.4s;
+}
+
+.live-dot.live-fresh {
+    background: #34c759;
+    animation: live-dot-pulse 2s ease-in-out infinite;
+}
+
+.live-dot.live-stale { background: #f59e0b; }
+.live-dot.live-old   { background: #ef4444; }
+
+@keyframes live-dot-pulse {
+    0%, 100% { opacity: 1;   transform: scale(1);    }
+    50%       { opacity: 0.5; transform: scale(0.75); }
+}
+
+/* Timestamp text */
+.live-time {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text);
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Refresh button — circular icon */
+.live-refresh {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.07);
+    border: none;
+    cursor: pointer;
+    color: var(--color-text);
+    transition: background-color 0.15s, transform 0.15s;
+    flex-shrink: 0;
+}
+
+.live-refresh:hover {
+    background: rgba(0, 0, 0, 0.13);
+}
+
+.live-refresh:active {
+    transform: rotate(180deg);
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.live-refresh:focus {
+    outline: none;
+}
+
+/* No-data empty state */
+.live-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--color-text-secondary);
+    font-size: 15px;
+}
+
 .submit-button {
     padding: var(--space-sm) var(--space-lg);
     font-size: 14px;

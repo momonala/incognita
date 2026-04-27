@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live | Incognita</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.js"></script>
+    <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
+    <script src="https://unpkg.com/@deck.gl/geo-layers@^9.0.0/dist.min.js"></script>
+</head>
+<body>
+    {% include 'navbar.html' %}
+
+    <main class="live-page">
+        {% if no_data %}
+            <div class="live-empty" aria-label="No data">
+                <p>No GPS data found in the last 7 days.</p>
+            </div>
+        {% else %}
+            <section class="live-map" aria-label="Live location map">
+                <div id="live-deck-container"></div>
+
+                <div class="live-overlay" role="status" aria-live="polite" aria-label="Last known location">
+                    <span class="live-dot {{ staleness_color }}" id="live-dot"></span>
+                    <span class="live-time" id="live-timestamp"></span>
+                    <button class="live-refresh" onclick="location.reload()" aria-label="Refresh">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                    </button>
+                </div>
+            </section>
+        {% endif %}
+    </main>
+
+    {% if not no_data %}
+    <script>
+(function () {
+    const LAT = {{ lat }};
+    const LON = {{ lon }};
+    const MAPBOX_TOKEN = {{ mapbox_api_key | tojson }};
+    const DAY_PATHS = {{ day_paths | tojson }};
+    const FIX_TIME = new Date({{ last_updated_iso | tojson }});
+
+    const ORANGE = [255, 111, 0];
+    const DOT_RADIUS_PX = 8;
+    const PULSE_MIN_RADIUS_PX = 14;
+    const PULSE_MAX_RADIUS_PX = 32;
+    const PULSE_FREQ_HZ = 0.4;
+    const LOOP_DURATION_SEC = 18;   // one full replay of the day every 18 real seconds
+    const TRAIL_LENGTH_SEC = 1800;  // 30 minutes of GPS time shown as fading trail
+
+    const STALENESS_GREEN_MS  = {{ staleness_green_ms }};
+    const STALENESS_YELLOW_MS = {{ staleness_yellow_ms }};
+
+    const container   = document.getElementById('live-deck-container');
+    const timestampEl = document.getElementById('live-timestamp');
+    const dotEl       = document.getElementById('live-dot');
+    if (!container || !MAPBOX_TOKEN) return;
+
+    // Single pass: build TripsLayer data and compute timestamp bounds together.
+    let minTs = Infinity, maxTs = -Infinity;
+    const tripsData = DAY_PATHS.map(path => {
+        const timestamps = path.map(p => p[2]);
+        for (const ts of timestamps) {
+            if (ts < minTs) minTs = ts;
+            if (ts > maxTs) maxTs = ts;
+        }
+        return { path: path.map(p => [p[0], p[1]]), timestamps };
+    });
+    const hasData = tripsData.length > 0 && minTs !== Infinity;
+    const daySpanSec = hasData ? maxTs - minTs : 0;
+
+    function formatAge(ms) {
+        if (ms < 0) return 'just now';
+        const totalSec = Math.floor(ms / 1000);
+        const s = totalSec % 60;
+        const totalMin = Math.floor(totalSec / 60);
+        const m = totalMin % 60;
+        const totalHours = Math.floor(totalMin / 60);
+        const h = totalHours % 24;
+        const d = Math.floor(totalHours / 24);
+
+        if (d > 0)          return `${d}d ${h}h ${m}m ${s}s ago`;
+        if (totalHours > 0) return `${h}h ${m}m ${s}s ago`;
+        if (totalMin > 0)   return `${m}m ${s}s ago`;
+        return `${s}s ago`;
+    }
+
+    // CSS class names must match _staleness_color() in app.py
+    function stalenessClass(ageMs) {
+        if (ageMs <= STALENESS_GREEN_MS)  return 'live-fresh';
+        if (ageMs <= STALENESS_YELLOW_MS) return 'live-stale';
+        return 'live-old';
+    }
+
+    function updateTimestamp() {
+        const ageMs = Date.now() - FIX_TIME.getTime();
+        const day   = FIX_TIME.getDate();
+        const month = FIX_TIME.toLocaleString(undefined, { month: 'short' });
+        const hh    = String(FIX_TIME.getHours()).padStart(2, '0');
+        const mm    = String(FIX_TIME.getMinutes()).padStart(2, '0');
+        timestampEl.textContent = `${day} ${month} ${hh}:${mm} · (${formatAge(ageMs)})`;
+        dotEl.className = `live-dot ${stalenessClass(ageMs)}`;
+    }
+
+    updateTimestamp();
+    setInterval(updateTimestamp, 1000);
+
+    // Static ghost path — full day's route at low opacity beneath the animated trail.
+    const ghostPathLayer = new deck.PathLayer({
+        id: 'ghost-path',
+        data: tripsData,
+        getPath: d => d.path,
+        getColor: [255, 111, 0, 50],
+        getWidth: 2,
+        widthUnits: 'pixels',
+        rounded: true,
+        pickable: false,
+    });
+
+    function makeTripsLayer(currentTime) {
+        return new deck.TripsLayer({
+            id: 'trips-trace',
+            data: tripsData,
+            getPath: d => d.path,
+            getTimestamps: d => d.timestamps,
+            getColor: [255, 111, 0],
+            currentTime,
+            trailLength: TRAIL_LENGTH_SEC,
+            widthMinPixels: 3,
+            rounded: true,
+            pickable: false,
+        });
+    }
+
+    function makePulseLayers(elapsedSec) {
+        const pulseT = 0.5 + 0.5 * Math.sin(2 * Math.PI * PULSE_FREQ_HZ * elapsedSec);
+        const pulseRadius = PULSE_MIN_RADIUS_PX + pulseT * (PULSE_MAX_RADIUS_PX - PULSE_MIN_RADIUS_PX);
+        const pulseOpacity = Math.round(40 + pulseT * 100);
+        return [
+            new deck.ScatterplotLayer({
+                id: 'pulse',
+                data: [{ position: [LON, LAT] }],
+                getPosition: d => d.position,
+                getRadius: pulseRadius,
+                getFillColor: [...ORANGE, pulseOpacity],
+                radiusUnits: 'pixels',
+                stroked: false,
+                pickable: false,
+            }),
+            new deck.ScatterplotLayer({
+                id: 'dot',
+                data: [{ position: [LON, LAT] }],
+                getPosition: d => d.position,
+                getRadius: DOT_RADIUS_PX,
+                getFillColor: [...ORANGE, 255],
+                radiusUnits: 'pixels',
+                stroked: true,
+                getLineColor: [255, 255, 255, 220],
+                lineWidthUnits: 'pixels',
+                getLineWidth: 2,
+                pickable: true,
+            }),
+        ];
+    }
+
+    const startTime = performance.now() / 1000;
+
+    const deckInstance = new deck.DeckGL({
+        container,
+        mapboxApiAccessToken: MAPBOX_TOKEN,
+        mapStyle: 'mapbox://styles/mapbox/dark-v11',
+        mapOptions: { projection: 'mercator' },
+        initialViewState: { latitude: LAT, longitude: LON, zoom: 13, bearing: 0, pitch: 0 },
+        controller: true,
+        getTooltip: ({ object }) => object && {
+            html: `<div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-weight:200;padding:4px 0;">
+                <div>${LAT.toFixed(5)}, ${LON.toFixed(5)}</div>
+            </div>`,
+            style: { backgroundColor: 'rgba(25,25,25,0.9)', color: 'white', border: '1px solid black', padding: '8px' },
+        },
+        layers: [ghostPathLayer, makeTripsLayer(hasData ? minTs : 0), ...makePulseLayers(0)],
+    });
+
+    let animationId;
+    function animate() {
+        const elapsed = performance.now() / 1000 - startTime;
+        // Loop currentTime through the day's timestamp range over LOOP_DURATION_SEC real seconds.
+        const currentTime = hasData && daySpanSec > 0
+            ? minTs + ((elapsed % LOOP_DURATION_SEC) / LOOP_DURATION_SEC) * daySpanSec
+            : 0;
+        deckInstance.setProps({
+            layers: [ghostPathLayer, makeTripsLayer(currentTime), ...makePulseLayers(elapsed)],
+        });
+        animationId = requestAnimationFrame(animate);
+    }
+    animationId = requestAnimationFrame(animate);
+})();
+    </script>
+    {% endif %}
+</body>
+</html>
