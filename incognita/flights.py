@@ -131,7 +131,7 @@ def _build_alpha_3_to_flights(
         arr_a2 = _airport_to_alpha_2(row["arrival_airport"])
         dep_a3 = alpha_2_to_alpha_3.get(dep_a2) if dep_a2 else None
         arr_a3 = alpha_2_to_alpha_3.get(arr_a2) if arr_a2 else None
-        date_str = row["Date"].strftime("%Y-%m-%d")
+        date_str = row["Date"].strftime("%Y-%m-%d") if pd.notna(row["Date"]) else ""
         route_str = f"{row['departure_airport']} → {row['arrival_airport']}"
         for a3 in (dep_a3, arr_a3):
             if a3:
