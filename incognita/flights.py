@@ -1,4 +1,5 @@
 import calendar
+import logging
 from collections import defaultdict
 
 import airportsdata
@@ -9,9 +10,12 @@ import pydeck as pdk
 
 from incognita.config import FLIGHTS_MAP_FILENAME
 from incognita.countries import get_countries_df
+from incognita.data_models import Country
 from incognita.geo_distance import get_haversine_dist
 from incognita.utils import DEFAULT_MAP_BOX, google_sheets_export_csv_url, read_google_sheets_csv
 from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
+
+logger = logging.getLogger(__name__)
 
 AIRPORT_DB = airportsdata.load("IATA")
 
@@ -20,6 +24,12 @@ SAMPLE_FLIGHTS_TOOLTIP_LIMIT = 6
 
 # Airport IATA -> country alpha_2 when DB is wrong or missing
 AIRPORT_COUNTRY_OVERRIDES: dict[str, str] = {"SXF": "DE", "REP": "KH"}
+
+
+# Countries present in airportsdata but absent from pycountry (non-UN-member states, disputed territories).
+_EXTRA_COUNTRIES: dict[str, Country] = {
+    "XK": Country(alpha_2="XK", alpha_3="XKX", name="Kosovo", flag="🇽🇰"),
+}
 
 DISTANCE_EARTH_KM = 40_075
 DISTANCE_MOON_KM = 385_000
@@ -78,7 +88,6 @@ def _distance_between_airports_km(flight_row) -> float:
 def get_flights_df() -> pd.DataFrame:
     """Load flights from Google Sheets, add coords and distance, sort by date."""
     flights_df = read_google_sheets_csv(google_sheets_export_csv_url("raw"))
-    print(flights_df.head())
     flights_df = flights_df[~flights_df["Origin"].isnull()]
     flights_df = flights_df[
         [
@@ -110,6 +119,7 @@ def _airport_to_alpha_2(airport: str) -> str | None:
     try:
         return AIRPORT_DB[airport]["country"]
     except KeyError:
+        logger.warning("Unknown airport IATA code %r — add to AIRPORT_COUNTRY_OVERRIDES if needed", airport)
         return None
 
 
@@ -117,8 +127,17 @@ def get_countries(flights_df: pd.DataFrame) -> list:
     """List of pycountry Country objects for countries visited by flight (arrival/departure), by frequency."""
     arr_codes = flights_df["arrival_airport"].apply(_airport_to_alpha_2)
     dep_codes = flights_df["departure_airport"].apply(_airport_to_alpha_2)
-    by_frequency = pd.concat([arr_codes, dep_codes]).value_counts()
-    return [pycountry.countries.get(alpha_2=code) for code in by_frequency.index]
+    by_frequency = pd.concat([arr_codes, dep_codes]).dropna().value_counts()
+    countries = []
+    for code in by_frequency.index:
+        country = pycountry.countries.get(alpha_2=code) or _EXTRA_COUNTRIES.get(code)
+        if country is None:
+            logger.warning(
+                "alpha_2 %r not found in pycountry or _EXTRA_COUNTRIES — add to one if expected", code
+            )
+            continue
+        countries.append(country)
+    return countries
 
 
 def _build_alpha_3_to_flights(

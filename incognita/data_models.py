@@ -26,6 +26,16 @@ class GeoBoundingBox:
 
 
 @dataclass(frozen=True)
+class Country:
+    """Country record compatible with the pycountry Country interface, for non-ISO entries."""
+
+    alpha_2: str
+    alpha_3: str
+    name: str
+    flag: str
+
+
+@dataclass(frozen=True)
 class LiveLocationSnapshot:
     """Most recent GPS fix and the full day's simplified trip paths."""
 

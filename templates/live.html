@@ -62,18 +62,21 @@
     const dotEl       = document.getElementById('live-dot');
     if (!container || !MAPBOX_TOKEN) return;
 
-    // Single pass: build TripsLayer data and compute timestamp bounds together.
-    let minTs = Infinity, maxTs = -Infinity;
+    // Remap timestamps to be continuous — strips real-time gaps between segments
+    // so the trace animates segment-after-segment with no pauses.
+    let cursor = 0;
     const tripsData = DAY_PATHS.map(path => {
-        const timestamps = path.map(p => p[2]);
-        for (const ts of timestamps) {
-            if (ts < minTs) minTs = ts;
-            if (ts > maxTs) maxTs = ts;
-        }
+        const rawTs = path.map(p => p[2]);
+        const segDuration = rawTs[rawTs.length - 1] - rawTs[0];
+        const offset = cursor - rawTs[0];
+        const timestamps = rawTs.map(ts => ts + offset);
+        cursor += segDuration;
         return { path: path.map(p => [p[0], p[1]]), timestamps };
     });
-    const hasData = tripsData.length > 0 && minTs !== Infinity;
-    const daySpanSec = hasData ? maxTs - minTs : 0;
+    const hasData = tripsData.length > 0 && cursor > 0;
+    const minTs = 0;
+    const maxTs = cursor;
+    const daySpanSec = cursor;
 
     function formatAge(ms) {
         if (ms < 0) return 'just now';
