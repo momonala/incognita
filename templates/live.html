@@ -40,20 +40,18 @@
     {% if not no_data %}
     <script>
 (function () {
-    const LAT = {{ lat }};
-    const LON = {{ lon }};
-    const MAPBOX_TOKEN = {{ mapbox_api_key | tojson }};
-    const DAY_PATHS = {{ day_paths | tojson }};
-    const FIX_TIME = new Date({{ last_updated_iso | tojson }});
+    let LAT = {{ lat }};
+    let LON = {{ lon }};
+    let FIX_TIME = new Date({{ last_updated_iso | tojson }});
 
-    const ORANGE = [255, 111, 0];
-    const DOT_RADIUS_PX = 8;
-    const PULSE_MIN_RADIUS_PX = 14;
-    const PULSE_MAX_RADIUS_PX = 32;
-    const PULSE_FREQ_HZ = 0.4;
-    const LOOP_DURATION_SEC = 18;   // one full replay of the day every 18 real seconds
-    const TRAIL_LENGTH_SEC = 1800;  // 30 minutes of GPS time shown as fading trail
-
+    const MAPBOX_TOKEN    = {{ mapbox_api_key | tojson }};
+    const ORANGE          = [255, 111, 0];
+    const DOT_RADIUS_PX   = 8;
+    const PULSE_MIN_PX    = 14;
+    const PULSE_MAX_PX    = 32;
+    const PULSE_FREQ_HZ   = 0.4;
+    const LOOP_DURATION_S = 18;
+    const TRAIL_LENGTH_S  = 1800;
     const STALENESS_GREEN_MS  = {{ staleness_green_ms }};
     const STALENESS_YELLOW_MS = {{ staleness_yellow_ms }};
 
@@ -62,39 +60,68 @@
     const dotEl       = document.getElementById('live-dot');
     if (!container || !MAPBOX_TOKEN) return;
 
-    // Remap timestamps to be continuous — strips real-time gaps between segments
-    // so the trace animates segment-after-segment with no pauses.
-    let cursor = 0;
-    const tripsData = DAY_PATHS.map(path => {
-        const rawTs = path.map(p => p[2]);
-        const segDuration = rawTs[rawTs.length - 1] - rawTs[0];
-        const offset = cursor - rawTs[0];
-        const timestamps = rawTs.map(ts => ts + offset);
-        cursor += segDuration;
-        return { path: path.map(p => [p[0], p[1]]), timestamps };
-    });
-    const hasData = tripsData.length > 0 && cursor > 0;
-    const minTs = 0;
-    const maxTs = cursor;
-    const daySpanSec = cursor;
+    // Remap raw GPS timestamps to be continuous — strips idle gaps between segments.
+    function buildTripsData(dayPaths) {
+        let cursor = 0;
+        return dayPaths.map(path => {
+            const rawTs = path.map(p => p[2]);
+            const offset = cursor - rawTs[0];
+            cursor += rawTs[rawTs.length - 1] - rawTs[0];
+            return { path: path.map(p => [p[0], p[1]]), timestamps: rawTs.map(ts => ts + offset) };
+        });
+    }
+
+    let tripsData  = buildTripsData({{ day_paths | tojson }});
+    let daySpanSec = tripsData.reduce((s, t) => s + (t.timestamps.at(-1) - t.timestamps[0]), 0);
+    let ghostLayer = makeGhostLayer();
+
+    function makeGhostLayer() {
+        return new deck.PathLayer({
+            id: 'ghost-path', data: tripsData, getPath: d => d.path,
+            getColor: [255, 111, 0, 50], getWidth: 2,
+            widthUnits: 'pixels', rounded: true, pickable: false,
+        });
+    }
+
+    function makeTripsLayer(currentTime) {
+        return new deck.TripsLayer({
+            id: 'trips-trace', data: tripsData,
+            getPath: d => d.path, getTimestamps: d => d.timestamps,
+            getColor: ORANGE, currentTime,
+            trailLength: TRAIL_LENGTH_S, widthMinPixels: 3, rounded: true, pickable: false,
+        });
+    }
+
+    function makePulseLayers(elapsed) {
+        const t = 0.5 + 0.5 * Math.sin(2 * Math.PI * PULSE_FREQ_HZ * elapsed);
+        const radius  = PULSE_MIN_PX + t * (PULSE_MAX_PX - PULSE_MIN_PX);
+        const opacity = Math.round(40 + t * 100);
+        const pos = [LON, LAT];
+        return [
+            new deck.ScatterplotLayer({
+                id: 'pulse', data: [{ position: pos }], getPosition: d => d.position,
+                getRadius: radius, getFillColor: [...ORANGE, opacity],
+                radiusUnits: 'pixels', stroked: false, pickable: false,
+            }),
+            new deck.ScatterplotLayer({
+                id: 'dot', data: [{ position: pos }], getPosition: d => d.position,
+                getRadius: DOT_RADIUS_PX, getFillColor: [...ORANGE, 255],
+                radiusUnits: 'pixels', stroked: true,
+                getLineColor: [255, 255, 255, 220], lineWidthUnits: 'pixels', getLineWidth: 2,
+                pickable: true,
+            }),
+        ];
+    }
 
     function formatAge(ms) {
         if (ms < 0) return 'just now';
-        const totalSec = Math.floor(ms / 1000);
-        const s = totalSec % 60;
-        const totalMin = Math.floor(totalSec / 60);
-        const m = totalMin % 60;
-        const totalHours = Math.floor(totalMin / 60);
-        const h = totalHours % 24;
-        const d = Math.floor(totalHours / 24);
-
-        if (d > 0)          return `${d}d ${h}h ${m}m ${s}s ago`;
-        if (totalHours > 0) return `${h}h ${m}m ${s}s ago`;
-        if (totalMin > 0)   return `${m}m ${s}s ago`;
-        return `${s}s ago`;
+        const s = Math.floor(ms / 1000), m = Math.floor(s / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
+        if (d > 0) return `${d}d ${h % 24}h ${m % 60}m ${s % 60}s ago`;
+        if (h > 0) return `${h}h ${m % 60}m ${s % 60}s ago`;
+        if (m > 0) return `${m}m ${s % 60}s ago`;
+        return `${s % 60}s ago`;
     }
 
-    // CSS class names must match _staleness_color() in app.py
     function stalenessClass(ageMs) {
         if (ageMs <= STALENESS_GREEN_MS)  return 'live-fresh';
         if (ageMs <= STALENESS_YELLOW_MS) return 'live-stale';
@@ -103,76 +130,13 @@
 
     function updateTimestamp() {
         const ageMs = Date.now() - FIX_TIME.getTime();
-        const day   = FIX_TIME.getDate();
-        const month = FIX_TIME.toLocaleString(undefined, { month: 'short' });
-        const hh    = String(FIX_TIME.getHours()).padStart(2, '0');
-        const mm    = String(FIX_TIME.getMinutes()).padStart(2, '0');
-        timestampEl.textContent = `${day} ${month} ${hh}:${mm} · (${formatAge(ageMs)})`;
+        const hh = String(FIX_TIME.getHours()).padStart(2, '0');
+        const mm = String(FIX_TIME.getMinutes()).padStart(2, '0');
+        timestampEl.textContent = `${FIX_TIME.getDate()} ${FIX_TIME.toLocaleString(undefined, { month: 'short' })} ${hh}:${mm} · (${formatAge(ageMs)})`;
         dotEl.className = `live-dot ${stalenessClass(ageMs)}`;
     }
-
     updateTimestamp();
     setInterval(updateTimestamp, 1000);
-
-    // Static ghost path — full day's route at low opacity beneath the animated trail.
-    const ghostPathLayer = new deck.PathLayer({
-        id: 'ghost-path',
-        data: tripsData,
-        getPath: d => d.path,
-        getColor: [255, 111, 0, 50],
-        getWidth: 2,
-        widthUnits: 'pixels',
-        rounded: true,
-        pickable: false,
-    });
-
-    function makeTripsLayer(currentTime) {
-        return new deck.TripsLayer({
-            id: 'trips-trace',
-            data: tripsData,
-            getPath: d => d.path,
-            getTimestamps: d => d.timestamps,
-            getColor: [255, 111, 0],
-            currentTime,
-            trailLength: TRAIL_LENGTH_SEC,
-            widthMinPixels: 3,
-            rounded: true,
-            pickable: false,
-        });
-    }
-
-    function makePulseLayers(elapsedSec) {
-        const pulseT = 0.5 + 0.5 * Math.sin(2 * Math.PI * PULSE_FREQ_HZ * elapsedSec);
-        const pulseRadius = PULSE_MIN_RADIUS_PX + pulseT * (PULSE_MAX_RADIUS_PX - PULSE_MIN_RADIUS_PX);
-        const pulseOpacity = Math.round(40 + pulseT * 100);
-        return [
-            new deck.ScatterplotLayer({
-                id: 'pulse',
-                data: [{ position: [LON, LAT] }],
-                getPosition: d => d.position,
-                getRadius: pulseRadius,
-                getFillColor: [...ORANGE, pulseOpacity],
-                radiusUnits: 'pixels',
-                stroked: false,
-                pickable: false,
-            }),
-            new deck.ScatterplotLayer({
-                id: 'dot',
-                data: [{ position: [LON, LAT] }],
-                getPosition: d => d.position,
-                getRadius: DOT_RADIUS_PX,
-                getFillColor: [...ORANGE, 255],
-                radiusUnits: 'pixels',
-                stroked: true,
-                getLineColor: [255, 255, 255, 220],
-                lineWidthUnits: 'pixels',
-                getLineWidth: 2,
-                pickable: true,
-            }),
-        ];
-    }
-
-    const startTime = performance.now() / 1000;
 
     const deckInstance = new deck.DeckGL({
         container,
@@ -182,27 +146,36 @@
         initialViewState: { latitude: LAT, longitude: LON, zoom: 13, bearing: 0, pitch: 0 },
         controller: true,
         getTooltip: ({ object }) => object && {
-            html: `<div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-weight:200;padding:4px 0;">
-                <div>${LAT.toFixed(5)}, ${LON.toFixed(5)}</div>
-            </div>`,
+            html: `<div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-weight:200;padding:4px 0;"><div>${LAT.toFixed(5)}, ${LON.toFixed(5)}</div></div>`,
             style: { backgroundColor: 'rgba(25,25,25,0.9)', color: 'white', border: '1px solid black', padding: '8px' },
         },
-        layers: [ghostPathLayer, makeTripsLayer(hasData ? minTs : 0), ...makePulseLayers(0)],
+        layers: [ghostLayer, makeTripsLayer(0), ...makePulseLayers(0)],
     });
 
-    let animationId;
+    const startTime = performance.now() / 1000;
     function animate() {
         const elapsed = performance.now() / 1000 - startTime;
-        // Loop currentTime through the day's timestamp range over LOOP_DURATION_SEC real seconds.
-        const currentTime = hasData && daySpanSec > 0
-            ? minTs + ((elapsed % LOOP_DURATION_SEC) / LOOP_DURATION_SEC) * daySpanSec
-            : 0;
-        deckInstance.setProps({
-            layers: [ghostPathLayer, makeTripsLayer(currentTime), ...makePulseLayers(elapsed)],
-        });
-        animationId = requestAnimationFrame(animate);
+        const currentTime = daySpanSec > 0 ? (elapsed % LOOP_DURATION_S) / LOOP_DURATION_S * daySpanSec : 0;
+        deckInstance.setProps({ layers: [ghostLayer, makeTripsLayer(currentTime), ...makePulseLayers(elapsed)] });
+        requestAnimationFrame(animate);
     }
-    animationId = requestAnimationFrame(animate);
+    requestAnimationFrame(animate);
+
+    function refreshLocation() {
+        fetch('/live/current')
+            .then(r => r.json())
+            .then(data => {
+                if (data.no_data) return;
+                LAT       = data.lat;
+                LON       = data.lon;
+                FIX_TIME  = new Date(data.last_updated_iso);
+                tripsData  = buildTripsData(data.day_paths);
+                daySpanSec = tripsData.reduce((s, t) => s + (t.timestamps.at(-1) - t.timestamps[0]), 0);
+                ghostLayer = makeGhostLayer();
+            })
+            .catch(() => {});
+    }
+    setInterval(refreshLocation, 60_000);
 })();
     </script>
     {% endif %}

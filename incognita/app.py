@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from flask import Flask, render_template, request, send_from_directory
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from incognita.config import DASHBOARD_PORT, GPS_MAP_FILENAME, VISITED_MAP_FILENAME
 from incognita.countries import (
@@ -182,6 +182,23 @@ def live():
         staleness_yellow_ms=LIVE_STALENESS_YELLOW_MINUTES * 60 * 1000,
         day_paths=snapshot.day_paths,
         mapbox_api_key=MAPBOX_API_KEY,
+    )
+
+
+@app.route("/live/current")
+def live_current():
+    """Return current GPS location as JSON for polling updates."""
+    snapshot = get_latest_location_snapshot()
+    if snapshot is None:
+        return jsonify({"no_data": True})
+    return jsonify(
+        {
+            "lat": snapshot.lat,
+            "lon": snapshot.lon,
+            "last_updated_iso": snapshot.timestamp.isoformat(),
+            "staleness_color": _staleness_color(snapshot.timestamp),
+            "day_paths": snapshot.day_paths,
+        }
     )
 
 
