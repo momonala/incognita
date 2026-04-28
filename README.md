@@ -26,14 +26,16 @@ flowchart LR
     end
     subgraph Server
         Overland -->|GeoJSON| DataAPI[Data API :5003]
-        DataAPI -->|Store| Files[incognita_incognita_raw_data /YYYY/MM/DD/HH/]
+        DataAPI -->|Store| Files[incognita_raw_data /YYYY/MM/DD/HH/]
         DataAPI -->|Update| DB[(SQLite DB)]
+        DataAPI -->|Heartbeat forward| WebApp
     end
     subgraph Web
         DB -->|Query| WebApp[Flask App :5004]
         WebApp -->|Render| GPS[GPS Map]
         WebApp -->|Render| Flights[Flight Tracker]
         WebApp -->|Render| Passport[Countries Visited]
+        WebApp -->|Render| Live[Live Location]
     end
 ```
 
@@ -43,7 +45,7 @@ flowchart LR
 
 - **GPS Tracking**: Receive and store location data from Overland app
 - **Interactive Maps**: Visualize GPS tracks with PyDeck/Deck.gl
-- **Live Location**: Real-time map showing most recent GPS fix with animated day-path replay and staleness indicator
+- **Live Location**: Real-time map showing most recent GPS fix with animated day-path replay; staleness dot uses the fresher of the last GPS fix or last heartbeat, so the indicator stays green while stationary
 - **Flight Tracking**: Analyze flight history with statistics and visualizations
 - **Countries Visited**: Track and visualize countries visited with passport-style view
 - **Heartbeat Monitoring**: Telegram alerts for data streaming downtime
@@ -154,7 +156,7 @@ incognita/
 | `/` | GET | Health check |
 | `/status` | GET | Server status |
 | `/dump` | POST | Receive GeoJSON location data from Overland app |
-| `/heartbeat` | POST | Heartbeat endpoint for monitoring |
+| `/heartbeat` | POST | Heartbeat endpoint for monitoring; forwards to web app |
 | `/coordinates` | GET | Fetch simplified coordinates from raw GPS files |
 
 ### Web App (`:5004`)
@@ -166,6 +168,8 @@ incognita/
 | `/flights` | GET | Flight history dashboard |
 | `/passport` | GET | Countries visited visualization |
 | `/live` | GET | Live location map with animated day-path replay |
+| `/live/current` | GET | JSON snapshot of current location, GPS fix time, and last heartbeat time |
+| `/internal/heartbeat` | POST | Internal endpoint; receives forwarded heartbeat from data API to update last-seen time |
 
 ### `/coordinates`
 

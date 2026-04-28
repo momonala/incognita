@@ -26,7 +26,7 @@
                 <div class="live-overlay" role="status" aria-live="polite" aria-label="Last known location">
                     <span class="live-dot {{ staleness_color }}" id="live-dot"></span>
                     <span class="live-time" id="live-timestamp"></span>
-                    <button class="live-refresh" onclick="location.reload()" aria-label="Refresh">
+                    <button class="live-refresh" id="live-refresh-btn" aria-label="Refresh">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <polyline points="23 4 23 10 17 10"></polyline>
                             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
@@ -56,9 +56,11 @@
     const STALENESS_GREEN_MS  = {{ staleness_green_ms }};
     const STALENESS_YELLOW_MS = {{ staleness_yellow_ms }};
 
-    const container   = document.getElementById('live-deck-container');
-    const timestampEl = document.getElementById('live-timestamp');
-    const dotEl       = document.getElementById('live-dot');
+    const container    = document.getElementById('live-deck-container');
+    const timestampEl  = document.getElementById('live-timestamp');
+    const dotEl        = document.getElementById('live-dot');
+    const overlayEl    = document.querySelector('.live-overlay');
+    const refreshBtnEl = document.getElementById('live-refresh-btn');
     if (!container || !MAPBOX_TOKEN) return;
 
     // Remap raw GPS timestamps to be continuous — strips idle gaps between segments.
@@ -163,6 +165,12 @@
     }
     requestAnimationFrame(animate);
 
+    function flashOverlay() {
+        overlayEl.classList.remove('live-overlay-flash');
+        void overlayEl.offsetWidth;
+        overlayEl.classList.add('live-overlay-flash');
+    }
+
     function refreshLocation() {
         fetch('/live/current')
             .then(r => r.json())
@@ -175,9 +183,11 @@
                 tripsData      = buildTripsData(data.day_paths);
                 daySpanSec     = tripsData.reduce((s, t) => s + (t.timestamps.at(-1) - t.timestamps[0]), 0);
                 ghostLayer     = makeGhostLayer();
+                flashOverlay();
             })
             .catch(() => {});
     }
+    refreshBtnEl.addEventListener('click', refreshLocation);
     setInterval(refreshLocation, 60_000);
 })();
     </script>

@@ -667,6 +667,15 @@ tfoot input {
     pointer-events: auto;
 }
 
+@keyframes live-overlay-flash {
+    0%   { background: rgba(255, 255, 255, 0.82); border-color: rgba(255, 255, 255, 0.5); }
+    50%  { background: rgba(52, 199, 89, 0.35);   border-color: rgba(52, 199, 89, 0.6); }
+    100% { background: rgba(255, 255, 255, 0.82); border-color: rgba(255, 255, 255, 0.5); }
+}
+.live-overlay-flash {
+    animation: live-overlay-flash 2s ease-in-out;
+}
+
 /* Status dot */
 .live-dot {
     width: 8px;
