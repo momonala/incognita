@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import requests
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from incognita.config import DASHBOARD_PORT, GPS_MAP_FILENAME, VISITED_MAP_FILENAME
@@ -155,6 +156,19 @@ def gps():
         trips_count=stats.trips_count,
         file_size_mb=file_size_mb,
     )
+
+
+HEALTH_API_URL = "http://localhost:5009/api/health-data"
+
+
+@app.route("/live/health")
+def live_health():
+    """Proxy today's health stats from the iOS health API."""
+    try:
+        r = requests.get(f"{HEALTH_API_URL}?date=today", timeout=3)
+        return jsonify(r.json())
+    except Exception:
+        return jsonify({"data": []}), 200
 
 
 @app.route("/internal/heartbeat", methods=["POST"])

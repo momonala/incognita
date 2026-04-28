@@ -647,12 +647,20 @@ tfoot input {
     inset: 0;
 }
 
-.live-overlay {
+.live-overlay-group {
     position: absolute;
     top: var(--space-lg);
     left: 50%;
     transform: translateX(-50%);
     z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    pointer-events: auto;
+}
+
+.live-overlay {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -664,7 +672,21 @@ tfoot input {
     border-radius: 999px;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.14), 0 1px 4px rgba(0, 0, 0, 0.08);
     white-space: nowrap;
-    pointer-events: auto;
+}
+
+.live-health {
+    display: none;
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 999px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.14), 0 1px 4px rgba(0, 0, 0, 0.08);
+    white-space: nowrap;
+    font-size: 0.75rem;
+    color: #555;
+    letter-spacing: 0.01em;
 }
 
 @keyframes live-overlay-flash {

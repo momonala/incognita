@@ -23,15 +23,18 @@
             <section class="live-map" aria-label="Live location map">
                 <div id="live-deck-container"></div>
 
-                <div class="live-overlay" role="status" aria-live="polite" aria-label="Last known location">
-                    <span class="live-dot {{ staleness_color }}" id="live-dot"></span>
-                    <span class="live-time" id="live-timestamp"></span>
-                    <button class="live-refresh" id="live-refresh-btn" aria-label="Refresh">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="23 4 23 10 17 10"></polyline>
-                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-                        </svg>
-                    </button>
+                <div class="live-overlay-group">
+                    <div class="live-overlay" role="status" aria-live="polite" aria-label="Last known location">
+                        <span class="live-dot {{ staleness_color }}" id="live-dot"></span>
+                        <span class="live-time" id="live-timestamp"></span>
+                        <button class="live-refresh" id="live-refresh-btn" aria-label="Refresh">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="live-health" id="live-health" aria-label="Today's activity"></div>
                 </div>
             </section>
         {% endif %}
@@ -61,7 +64,26 @@
     const dotEl        = document.getElementById('live-dot');
     const overlayEl    = document.querySelector('.live-overlay');
     const refreshBtnEl = document.getElementById('live-refresh-btn');
+    const healthEl     = document.getElementById('live-health');
     if (!container || !MAPBOX_TOKEN) return;
+
+    function fmtSteps(n) { return parseFloat((n / 1000).toFixed(1)) + 'k'; }
+
+    fetch('/live/health')
+        .then(r => r.json())
+        .then(body => {
+            if (!body.data || !body.data.length) return;
+            const d = body.data[0];
+            const parts = [
+                fmtSteps(d.steps) + ' steps',
+                Math.round(d.kcals) + ' kcal',
+                d.km.toFixed(1) + 'km',
+                d.flights_climbed + ' flights',
+            ];
+            healthEl.textContent = parts.join(' | ');
+            healthEl.style.display = 'block';
+        })
+        .catch(() => {});
 
     // Remap raw GPS timestamps to be continuous — strips idle gaps between segments.
     function buildTripsData(dayPaths) {
@@ -132,7 +154,7 @@
     }
 
     function updateTimestamp() {
-        const t = HEARTBEAT_TIME && HEARTBEAT_TIME > FIX_TIME ? HEARTBEAT_TIME : FIX_TIME;
+        const t = HEARTBEAT_TIME || FIX_TIME;
         const ageMs = Date.now() - t.getTime();
         const hh = String(t.getHours()).padStart(2, '0');
         const mm = String(t.getMinutes()).padStart(2, '0');

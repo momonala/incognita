@@ -156,7 +156,7 @@ def _segment_trips(
         if len(trip_df) < min_points:
             continue
         trips.append(trip_df)
-    logger.info(f"[_segment_trips] {len(gdf)} raw points into {len(trips)} trips")
+    logger.debug(f"[_segment_trips] {len(gdf)} raw points into {len(trips)} trips")
     return trips
 
 
@@ -249,7 +249,7 @@ def _gdf_to_simplified_trip_paths(
     reduction_pct = 0.0
     if total_points_before > 0:
         reduction_pct = 100.0 * (1.0 - total_points_after / total_points_before)
-    logger.info(
+    logger.debug(
         f"[{source_label}] {len(trips)} trips | points {total_points_before} -> {total_points_after} | "
         f"{reduction_pct:.1f}% reduction | tolerance={simplify_tolerance_m:.1f}m"
     )
@@ -477,7 +477,7 @@ def get_latest_location_snapshot(
             continue
 
         latest = df.iloc[-1]
-        logger.info(
+        logger.debug(
             "[get_latest_location_snapshot] found point at %04d-%02d-%02d | %s",
             date.year,
             date.month,
