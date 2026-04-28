@@ -43,6 +43,7 @@
     let LAT = {{ lat }};
     let LON = {{ lon }};
     let FIX_TIME = new Date({{ last_updated_iso | tojson }});
+    let HEARTBEAT_TIME = {{ last_heartbeat_iso | tojson }} ? new Date({{ last_heartbeat_iso | tojson }}) : null;
 
     const MAPBOX_TOKEN    = {{ mapbox_api_key | tojson }};
     const ORANGE          = [255, 111, 0];
@@ -129,10 +130,11 @@
     }
 
     function updateTimestamp() {
-        const ageMs = Date.now() - FIX_TIME.getTime();
-        const hh = String(FIX_TIME.getHours()).padStart(2, '0');
-        const mm = String(FIX_TIME.getMinutes()).padStart(2, '0');
-        timestampEl.textContent = `${FIX_TIME.getDate()} ${FIX_TIME.toLocaleString(undefined, { month: 'short' })} ${hh}:${mm} · (${formatAge(ageMs)})`;
+        const t = HEARTBEAT_TIME && HEARTBEAT_TIME > FIX_TIME ? HEARTBEAT_TIME : FIX_TIME;
+        const ageMs = Date.now() - t.getTime();
+        const hh = String(t.getHours()).padStart(2, '0');
+        const mm = String(t.getMinutes()).padStart(2, '0');
+        timestampEl.textContent = `${t.getDate()} ${t.toLocaleString(undefined, { month: 'short' })} ${hh}:${mm} · (${formatAge(ageMs)})`;
         dotEl.className = `live-dot ${stalenessClass(ageMs)}`;
     }
     updateTimestamp();
@@ -166,12 +168,13 @@
             .then(r => r.json())
             .then(data => {
                 if (data.no_data) return;
-                LAT       = data.lat;
-                LON       = data.lon;
-                FIX_TIME  = new Date(data.last_updated_iso);
-                tripsData  = buildTripsData(data.day_paths);
-                daySpanSec = tripsData.reduce((s, t) => s + (t.timestamps.at(-1) - t.timestamps[0]), 0);
-                ghostLayer = makeGhostLayer();
+                LAT           = data.lat;
+                LON           = data.lon;
+                FIX_TIME      = new Date(data.last_updated_iso);
+                if (data.last_heartbeat_iso) HEARTBEAT_TIME = new Date(data.last_heartbeat_iso);
+                tripsData      = buildTripsData(data.day_paths);
+                daySpanSec     = tripsData.reduce((s, t) => s + (t.timestamps.at(-1) - t.timestamps[0]), 0);
+                ghostLayer     = makeGhostLayer();
             })
             .catch(() => {});
     }

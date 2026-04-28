@@ -36,6 +36,8 @@ FLIGHTS_TABLE_DATE_FMT = "%Y.%m.%d"
 LIVE_STALENESS_GREEN_MINUTES = 5
 LIVE_STALENESS_YELLOW_MINUTES = 15
 
+_last_heartbeat_time: datetime | None = None
+
 _base_dir = Path(__file__).parent.parent
 app = Flask(
     __name__,
@@ -155,6 +157,14 @@ def gps():
     )
 
 
+@app.route("/internal/heartbeat", methods=["POST"])
+def internal_heartbeat():
+    """Receive heartbeat forwarded from data_api; updates in-memory last-seen time."""
+    global _last_heartbeat_time
+    _last_heartbeat_time = datetime.now(timezone.utc)
+    return jsonify({"status": "ok"}), 200
+
+
 def _staleness_color(timestamp: datetime) -> str:
     """Return CSS color class based on how old the GPS fix is."""
     age_minutes = (datetime.now(timezone.utc) - timestamp).total_seconds() / 60
@@ -182,6 +192,7 @@ def live():
         staleness_yellow_ms=LIVE_STALENESS_YELLOW_MINUTES * 60 * 1000,
         day_paths=snapshot.day_paths,
         mapbox_api_key=MAPBOX_API_KEY,
+        last_heartbeat_iso=_last_heartbeat_time.isoformat() if _last_heartbeat_time else None,
     )
 
 
@@ -198,6 +209,7 @@ def live_current():
             "last_updated_iso": snapshot.timestamp.isoformat(),
             "staleness_color": _staleness_color(snapshot.timestamp),
             "day_paths": snapshot.day_paths,
+            "last_heartbeat_iso": _last_heartbeat_time.isoformat() if _last_heartbeat_time else None,
         }
     )
 

@@ -13,6 +13,7 @@ from pathlib import Path
 import requests
 from flask import Flask, Response, jsonify, request
 
+from incognita.config import DASHBOARD_PORT
 from incognita.database import update_db
 from incognita.gps_trips_renderer import get_trip_points_for_date_range
 from incognita.utils import get_ip_address
@@ -169,6 +170,10 @@ def watchdog():
 def heartbeat():
     global last_heartbeat
     last_heartbeat = datetime.now()
+    try:
+        requests.post(f"http://localhost:{DASHBOARD_PORT}/internal/heartbeat", timeout=1)
+    except Exception as e:
+        logger.warning(f"Failed to send heartbeat to dashboard: {e}")
     return jsonify({"status": "ok"}), 200
 
 
