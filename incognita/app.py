@@ -28,6 +28,7 @@ from incognita.gps_trips_renderer import (
     get_trips_for_date_range,
     render_trips_to_file,
 )
+from incognita.observability import configure_logging
 from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX, google_sheets_document_url
 from incognita.values import MAPBOX_API_KEY
 
@@ -46,17 +47,14 @@ app = Flask(
     template_folder=str(_base_dir / "templates"),
 )
 
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
-logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 
 def get_age_of_map_update(filename: str) -> str:
     """Return last-modified date of file as dd.mm.yyyy HH:MM, or 'N/A' if missing."""
     path = Path(filename)
     if not path.exists():
-        logger.info("%s not found", filename)
+        logger.debug("%s not found", filename)
         return "N/A"
     return time.strftime("%d.%m.%Y %H:%M", time.localtime(path.stat().st_mtime))
 
@@ -145,7 +143,7 @@ def gps():
     map_path = Path(GPS_MAP_FILENAME)
     file_size_mb = map_path.stat().st_size / BYTES_PER_MB if map_path.exists() else 0.0
     day_count = (datetime.strptime(end_date, DATE_FMT) - datetime.strptime(start_date, DATE_FMT)).days + 1
-    logger.info(f"[/gps]: {'-'*10} done {start_date=} {end_date=} {'-'*10}")
+    logger.debug("[/gps] done start_date=%s end_date=%s", start_date, end_date)
     return render_template(
         "gps.html",
         start_date=start_date,
@@ -249,6 +247,7 @@ def passport():
 
 
 def main():
+    configure_logging()
     logger.info(f"http://localhost:{DASHBOARD_PORT}")
     app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
 

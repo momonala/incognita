@@ -16,12 +16,11 @@ from flask import Flask, Response, jsonify, request
 from incognita.config import DASHBOARD_PORT
 from incognita.database import update_db
 from incognita.gps_trips_renderer import get_trip_points_for_date_range
+from incognita.observability import configure_logging
 from incognita.utils import get_ip_address
 from incognita.values import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
-logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 app = Flask(__name__)
 
@@ -61,7 +60,7 @@ def log_payload_size(f):
         if isinstance(response, Response):
             payload_size = len(response.get_data())
             payload_size_mb = payload_size / 1024 / 1024
-            logger.info(f"Response payload size: {payload_size_mb:.6f} MB")
+            logger.debug("Response payload size: %.6f MB", payload_size_mb)
         return response
 
     return decorated_function
@@ -204,7 +203,7 @@ def _log_dump_target_diagnostics(
     day_stat = day_path.stat()
     hour_stat = target_path.stat()
     day_geojson_files = sum(1 for _ in day_path.rglob("*.geojson"))
-    logger.info(
+    logger.debug(
         "[dump-cache-diagnostics] wrote_file=%s file=%s locations=%s day_dir=%s day_size=%s "
         "day_mtime_ns=%s hour_dir=%s hour_size=%s hour_mtime_ns=%s day_geojson_files=%s",
         wrote_file,
@@ -277,7 +276,7 @@ def dump():
     if not file_name.exists():
         with open(file_name, "w") as fh:
             json.dump(json_data, fh, indent=2, ensure_ascii=False)
-        logging.info(f"Wrote {file_name=}")
+        logger.debug("Wrote file_name=%s", file_name)
         update_db(str(file_name))
         wrote_file = True
     else:
@@ -297,7 +296,7 @@ def get_coordinates():
             return jsonify({"status": "error", "message": "lookback_hours must be positive"}), 400
 
         start_dt, end_dt = _get_coordinates_window(lookback_hours)
-        logger.info(
+        logger.debug(
             "[coordinates] fetching file-backed coordinates lookback_hours=%s start=%s end=%s",
             lookback_hours,
             start_dt.isoformat(),
@@ -305,7 +304,7 @@ def get_coordinates():
         )
         paths = _trip_points_to_api_paths(start_dt, end_dt)
         coordinate_count = sum(len(path) for path in paths)
-        logger.info(
+        logger.debug(
             "[coordinates] response paths=%s coordinates=%s lookback_hours=%s start=%s end=%s",
             len(paths),
             coordinate_count,
@@ -328,6 +327,7 @@ def get_coordinates():
 
 
 def main():
+    configure_logging()
     threading.Thread(target=watchdog, daemon=True).start()
     logger.info(f"Running server at http://{get_ip_address()}:{overland_port}")
     app.run(host="0.0.0.0", port=overland_port)

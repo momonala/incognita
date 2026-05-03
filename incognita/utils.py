@@ -1,20 +1,8 @@
-import logging
-import os
 import socket
-import time
-from collections.abc import Callable
-from functools import wraps
 
 import pandas as pd
-import psutil
-from rich.console import Console
-from rich.table import Table
 
 from incognita.data_models import GeoBoundingBox, GeoCoords
-
-logger = logging.getLogger(__name__)
-_console = Console()
-
 
 BYTES_PER_MB = 1024 * 1024
 
@@ -31,33 +19,6 @@ def get_ip_address() -> str:
     socket_name = s.getsockname()
     s.close()
     return socket_name[0]
-
-
-def timed(func: Callable[..., object]) -> Callable[..., object]:
-    """Prints execution time and memory usage for the decorated function."""
-
-    @wraps(func)
-    def wrapper(*args: object, **kwargs: object) -> object:
-        process = psutil.Process(os.getpid())
-        mem_before_mb = process.memory_info().rss / BYTES_PER_MB
-        start = time.time()
-        result = func(*args, **kwargs)
-        elapsed_s = round(time.time() - start, 2)
-        mem_after_mb = process.memory_info().rss / BYTES_PER_MB
-        delta_mb = mem_after_mb - mem_before_mb
-        table = Table(show_header=False, box=None)
-        table.add_column("", style="cyan", width=28)
-        table.add_column("", style="green", justify="right", width=8)
-        table.add_column("", style="yellow")
-        table.add_row(
-            func.__name__,
-            f"{elapsed_s} s",
-            f"{mem_before_mb:.2f}MB → {mem_after_mb:.2f}MB  [magenta](Δ{delta_mb:.2f}MB)[/]",
-        )
-        _console.print(table)
-        return result
-
-    return wrapper
 
 
 GOOGLE_SHEETS_DOCUMENT_ID = "1V4hVhSH1_tHizwqlSQ2ymysQwwQMuFENfE9lB5vJPQY"

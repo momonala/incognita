@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from incognita.geo_distance import get_haversine_dist
-from incognita.utils import timed
+from incognita.observability import timed
 
 logger = logging.getLogger(__name__)
 

@@ -8,10 +8,10 @@ from incognita.config import GPS_MAP_FILENAME
 from incognita.data_models import GeoBoundingBox
 from incognita.database import get_gdf_for_map
 from incognita.gps_point_series import add_speed_to_gdf
-from incognita.utils import BYTES_PER_MB, timed
+from incognita.observability import timed
+from incognita.utils import BYTES_PER_MB
 from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s:%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 # Align with /coordinates API: min_accuracy and max_distance in meters
@@ -39,7 +39,7 @@ def get_filtered_gps_df(
     gdf["meters"] = gdf["meters"].fillna(0.0)
     gdf = gdf[gdf["meters"] <= max_distance_m]
     mem_mb = gdf.memory_usage(deep=True).sum() / BYTES_PER_MB
-    logger.info("[get_filtered_gps_df] shape=%s mem=%.2f MB", gdf.shape, mem_mb)
+    logger.debug("[get_filtered_gps_df] shape=%s mem=%.2f MB", gdf.shape, mem_mb)
     return gdf
 
 
@@ -98,5 +98,11 @@ def gps_df_to_deck_map(
     points_count = len(points_df)
     if not trips_df.empty and "geometry" in trips_df.columns:
         points_count += sum(len(geom) for geom in trips_df["geometry"])
-    logger.info(f"[gps_df_to_deck_map] {points_df.shape=} {trips_df.shape=} | {filename} | {size_mb:.2f} MB")
+    logger.debug(
+        "[gps_df_to_deck_map] points_shape=%s trips_shape=%s filename=%s size_mb=%.2f",
+        points_df.shape,
+        trips_df.shape,
+        filename,
+        size_mb,
+    )
     return r, points_count, size_mb

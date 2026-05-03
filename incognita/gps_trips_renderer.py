@@ -9,13 +9,13 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
 from incognita.data_models import GeoBoundingBox, LiveLocationSnapshot, TripDisplayStats
 from incognita.database import extract_properties_from_geojson, read_geojson_file
 from incognita.gps import gps_df_to_deck_map
 from incognita.gps_point_series import add_speed_to_gdf
-from incognita.utils import DEFAULT_MAP_BOX, timed
+from incognita.observability import configure_logging, timed
+from incognita.utils import DEFAULT_MAP_BOX
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ def _log_cache_key_diagnostics(scope_label: str, root: Path, cache_hash: str) ->
     """Log the directory metadata used for cache invalidation plus recursive file visibility."""
     stat = root.stat()
     geojson_file_count = sum(1 for _ in root.rglob("*.geojson"))
-    logger.info(
+    logger.debug(
         "[coordinates-cache] lookup %s root=%s hash=%s dir_size=%s dir_mtime_ns=%s geojson_files=%s",
         scope_label,
         root,
@@ -94,10 +94,10 @@ def _log_cache_key_diagnostics(scope_label: str, root: Path, cache_hash: str) ->
 def _log_points_loaded(scope_label: str, df: pd.DataFrame) -> None:
     """Log loaded point bounds without exposing raw coordinates."""
     if df.empty:
-        logger.info("[coordinates-cache] result %s rows=0", scope_label)
+        logger.debug("[coordinates-cache] result %s rows=0", scope_label)
         return
 
-    logger.info(
+    logger.debug(
         "[coordinates-cache] result %s rows=%s first_ts=%s last_ts=%s",
         scope_label,
         len(df),
@@ -123,7 +123,7 @@ def _load_one_geojson(path: Path) -> list[dict]:
 def _load_points_from_root(root: Path, scope_label: str) -> pd.DataFrame:
     """Load and sort raw GPS points from one directory subtree."""
     if not root.exists():
-        logger.info(f"No incognita_raw_data directory for {scope_label} ({root})")
+        logger.debug("No incognita_raw_data directory for %s (%s)", scope_label, root)
         return pd.DataFrame(columns=GPS_POINT_COLUMNS)
 
     paths = list(root.rglob("*.geojson"))
@@ -135,12 +135,12 @@ def _load_points_from_root(root: Path, scope_label: str) -> pd.DataFrame:
 
     logger.debug(f"[_load_points_from_root] {scope_label} | {root} | {len(rows)} points")
     if not rows:
-        logger.info(f"[_load_points_from_root] {scope_label} | {root} | no points")
+        logger.debug("[_load_points_from_root] %s | %s | no points", scope_label, root)
         return pd.DataFrame(columns=GPS_POINT_COLUMNS)
 
     df = pd.DataFrame(rows)
     if df.empty:
-        logger.info(f"Parsed empty DataFrame for {scope_label} ({root})")
+        logger.debug("Parsed empty DataFrame for %s (%s)", scope_label, root)
         return df
 
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
@@ -264,7 +264,7 @@ def _gdf_to_simplified_trip_paths(
         min_points=min_points,
     )
     if not segments:
-        logger.info(f"No trips found for {source_label} after segmentation")
+        logger.debug("No trips found for %s after segmentation", source_label)
         return []
 
     trips: list[list[list[float]]] = []
@@ -298,7 +298,7 @@ def _get_month_trips_cached_impl(
     month_hash: str,
 ) -> list[list[list[float]]]:
     """Load points, segment into trips, simplify. Each point is [lon, lat, ts] (ts = unix sec)."""
-    logger.info("[coordinates-cache] CACHE MISS month %04d-%02d hash=%s", year, month, month_hash[:12])
+    logger.debug("[coordinates-cache] CACHE MISS month %04d-%02d hash=%s", year, month, month_hash[:12])
     gdf = _load_month_points(year, month)
     return _gdf_to_simplified_trip_paths(
         gdf,
@@ -313,7 +313,7 @@ def _get_month_trips_cached_impl(
 @memory.cache
 def _get_day_points_cached_impl(year: int, month: int, day: int, day_hash: str) -> pd.DataFrame:
     """Load and cache raw GPS points for a single day."""
-    logger.info(
+    logger.debug(
         "[coordinates-cache] CACHE MISS day %04d-%02d-%02d hash=%s",
         year,
         month,
@@ -353,7 +353,13 @@ def _get_live_month_trips(
     for day in _days_in_range_for_month(year, month, start, end):
         day_root = _day_root(year, month, day)
         if not day_root.exists():
-            logger.info(f"No incognita_raw_data directory for {year:04d}-{month:02d}-{day:02d} ({day_root})")
+            logger.debug(
+                "No incognita_raw_data directory for %04d-%02d-%02d (%s)",
+                year,
+                month,
+                day,
+                day_root,
+            )
             continue
         day_hash = _compute_day_dir_hash(day_root)
         scope_label = f"day {year:04d}-{month:02d}-{day:02d}"
@@ -411,7 +417,7 @@ def get_trip_points_for_date_range(
     months = _month_range(start, end)
     live_month = (end.year, end.month)
 
-    for year, month in tqdm(months, desc="Processing months"):
+    for year, month in months:
         if (year, month) == live_month:
             monthly_trips = _get_live_month_trips(
                 year=year,
@@ -426,7 +432,7 @@ def get_trip_points_for_date_range(
         else:
             month_root = _month_root(year, month)
             if not month_root.exists():
-                logger.info(f"No incognita_raw_data directory for {year:04d}-{month:02d} ({month_root})")
+                logger.debug("No incognita_raw_data directory for %04d-%02d (%s)", year, month, month_root)
                 continue
             month_hash = _compute_month_dir_hash(month_root)
             _log_cache_key_diagnostics(f"month {year:04d}-{month:02d}", month_root, month_hash)
@@ -442,13 +448,15 @@ def get_trip_points_for_date_range(
         trips.extend(monthly_trips)
 
     if not trips:
-        logger.info(f"No trips to render between {start.isoformat()} and {end.isoformat()}")
+        logger.debug("No trips to render between %s and %s", start.isoformat(), end.isoformat())
         return None
 
     trips_in_range = _truncate_trip_points_to_date_range(trips, start, end)
     if not trips_in_range:
-        logger.info(
-            f"No trip points in range {start.date().isoformat()} -> {end.date().isoformat()} after truncation"
+        logger.debug(
+            "No trip points in range %s -> %s after truncation",
+            start.date().isoformat(),
+            end.date().isoformat(),
         )
         return None
 
@@ -562,10 +570,7 @@ def render_trips_to_file(
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    configure_logging()
     resolution_meters = 4
     start_date = datetime(2021, 10, 1)
     end_date = datetime.today()

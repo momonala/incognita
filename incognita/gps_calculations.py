@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from incognita.utils import timed
+from incognita.observability import timed
 
 METERS_PER_DEGREE = 111_000.0
 RADIUS_EARTH_M = 6_378_137

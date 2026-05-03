@@ -5,9 +5,8 @@ from functools import lru_cache
 
 import pandas as pd
 
-from incognita.utils import timed
+from incognita.observability import timed
 
-logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DB_FILE = "data/geo_data.db"
@@ -46,12 +45,12 @@ def update_db(
     """
     raw_geojson = read_geojson_file(geojson_filename)
     if not raw_geojson:
-        logger.info(f"Failed parsing file {geojson_filename}")
+        logger.warning("Failed parsing file %s", geojson_filename)
         return
     parsed = extract_properties_from_geojson(raw_geojson)
     df = pd.DataFrame(parsed)
     if df.empty:
-        logger.info(f"No data to update db with {geojson_filename}")
+        logger.warning("No data to update db with %s", geojson_filename)
         return
 
     if conn is not None:
@@ -61,7 +60,7 @@ def update_db(
         # Create new connection
         with sqlite3.connect(db_filename) as conn:
             df.to_sql(DB_NAME, conn, if_exists="append", index=False)
-    logger.info(f"Updated: {db_filename=} with: {geojson_filename=} size: {df.shape=}")
+    logger.debug("Updated db_filename=%s with geojson_filename=%s shape=%s", db_filename, geojson_filename, df.shape)
 
 
 def create_timestamp_index() -> None:
