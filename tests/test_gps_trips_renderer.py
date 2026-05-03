@@ -5,6 +5,7 @@ import pandas as pd
 
 from incognita.data_models import TripDisplayStats
 from incognita.gps_trips_renderer import (
+    _compute_month_dir_hash,
     _get_live_month_trips,
     get_trip_points_for_date_range,
     get_trips_for_date_range,
@@ -35,8 +36,8 @@ def test_get_trip_points_for_date_range_filters_to_requested_window(monkeypatch)
     assert result == [[[3.0, 4.0, start.timestamp() + 1], [5.0, 6.0, end.timestamp() - 1]]]
 
 
-def test_get_live_month_trips_uses_day_cached_points(monkeypatch, tmp_path: Path):
-    """Load current-month points from day caches before segmenting once."""
+def test_get_live_month_trips_loads_day_points_without_cache(monkeypatch, tmp_path: Path):
+    """Load current-month points directly from files before segmenting once."""
     day_one_root = tmp_path / "2024" / "02" / "09"
     day_two_root = tmp_path / "2024" / "02" / "10"
     day_one_root.mkdir(parents=True)
@@ -47,9 +48,10 @@ def test_get_live_month_trips_uses_day_cached_points(monkeypatch, tmp_path: Path
         "incognita.gps_trips_renderer._day_root",
         lambda year, month, day: day_one_root if day == 9 else day_two_root,
     )
-    monkeypatch.setattr("incognita.gps_trips_renderer._compute_day_dir_hash", lambda root: root.name)
+    load_calls: list[tuple[int, int, int]] = []
 
-    def fake_get_day_points_cached_impl(year: int, month: int, day: int, day_hash: str) -> pd.DataFrame:
+    def fake_load_day_points(year: int, month: int, day: int) -> pd.DataFrame:
+        load_calls.append((year, month, day))
         if day == 9:
             return pd.DataFrame([{"timestamp": pd.Timestamp("2024-02-09T23:00:00Z"), "lon": 1.0, "lat": 2.0}])
         return pd.DataFrame([{"timestamp": pd.Timestamp("2024-02-10T01:00:00Z"), "lon": 3.0, "lat": 4.0}])
@@ -70,8 +72,8 @@ def test_get_live_month_trips_uses_day_cached_points(monkeypatch, tmp_path: Path
         return [[[1.0, 2.0, 100.0], [3.0, 4.0, 200.0]]]
 
     monkeypatch.setattr(
-        "incognita.gps_trips_renderer._get_day_points_cached_impl",
-        fake_get_day_points_cached_impl,
+        "incognita.gps_trips_renderer._load_day_points",
+        fake_load_day_points,
     )
     monkeypatch.setattr(
         "incognita.gps_trips_renderer._gdf_to_simplified_trip_paths",
@@ -90,6 +92,20 @@ def test_get_live_month_trips_uses_day_cached_points(monkeypatch, tmp_path: Path
     )
 
     assert result == [[[1.0, 2.0, 100.0], [3.0, 4.0, 200.0]]]
+    assert load_calls == [(2024, 2, 9), (2024, 2, 10)]
+
+
+def test_month_cache_hash_changes_when_file_added_under_existing_hour(tmp_path: Path):
+    """Invalidate cached completed-month loads when a nested GeoJSON file is added."""
+    hour_root = tmp_path / "2024" / "02" / "09" / "12"
+    hour_root.mkdir(parents=True)
+    (hour_root / "first.geojson").write_text("{}", encoding="utf-8")
+    first_hash = _compute_month_dir_hash(tmp_path / "2024" / "02")
+
+    (hour_root / "second.geojson").write_text("{}", encoding="utf-8")
+    second_hash = _compute_month_dir_hash(tmp_path / "2024" / "02")
+
+    assert second_hash != first_hash
 
 
 def test_get_trip_points_for_date_range_uses_month_cache_for_previous_months(monkeypatch, tmp_path: Path):

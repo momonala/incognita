@@ -63,21 +63,25 @@ def _month_range(start: datetime, end: datetime) -> list[tuple[int, int]]:
     return months
 
 
-def _compute_dir_hash(root: Path) -> str:
-    """Hash for cache invalidation from a directory's size and mtime.
-
-    One stat() only. Hash changes when files are added/removed (dir mtime/size
-    change). In-place edits to existing files may not change it; fine for caching.
-    """
-    stat = root.stat()
+def _compute_geojson_tree_hash(root: Path) -> str:
+    """Hash recursive GeoJSON file metadata for cache invalidation."""
     hasher = hashlib.sha256()
-    hasher.update(str(stat.st_size).encode("utf-8"))
-    hasher.update(str(stat.st_mtime_ns).encode("utf-8"))
+    for path in sorted(root.rglob("*.geojson")):
+        stat = path.stat()
+        hasher.update(path.relative_to(root).as_posix().encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(str(stat.st_size).encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(str(stat.st_mtime_ns).encode("utf-8"))
+        hasher.update(b"\0")
     return hasher.hexdigest()
 
 
 def _log_cache_key_diagnostics(scope_label: str, root: Path, cache_hash: str) -> None:
     """Log the directory metadata used for cache invalidation plus recursive file visibility."""
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+
     stat = root.stat()
     geojson_file_count = sum(1 for _ in root.rglob("*.geojson"))
     logger.debug(
@@ -93,6 +97,9 @@ def _log_cache_key_diagnostics(scope_label: str, root: Path, cache_hash: str) ->
 
 def _log_points_loaded(scope_label: str, df: pd.DataFrame) -> None:
     """Log loaded point bounds without exposing raw coordinates."""
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+
     if df.empty:
         logger.debug("[coordinates-cache] result %s rows=0", scope_label)
         return
@@ -107,11 +114,7 @@ def _log_points_loaded(scope_label: str, df: pd.DataFrame) -> None:
 
 
 def _compute_month_dir_hash(month_root: Path) -> str:
-    return _compute_dir_hash(month_root)
-
-
-def _compute_day_dir_hash(day_root: Path) -> str:
-    return _compute_dir_hash(day_root)
+    return _compute_geojson_tree_hash(month_root)
 
 
 def _load_one_geojson(path: Path) -> list[dict]:
@@ -310,19 +313,6 @@ def _get_month_trips_cached_impl(
     )
 
 
-@memory.cache
-def _get_day_points_cached_impl(year: int, month: int, day: int, day_hash: str) -> pd.DataFrame:
-    """Load and cache raw GPS points for a single day."""
-    logger.debug(
-        "[coordinates-cache] CACHE MISS day %04d-%02d-%02d hash=%s",
-        year,
-        month,
-        day,
-        day_hash[:12],
-    )
-    return _load_day_points(year, month, day)
-
-
 def _days_in_range_for_month(year: int, month: int, start: datetime, end: datetime) -> list[int]:
     """Return day numbers in the month that overlap the requested range."""
     month_start = datetime(year, month, 1, tzinfo=start.tzinfo)
@@ -348,7 +338,7 @@ def _get_live_month_trips(
     min_points: int,
     simplify_tolerance_m: float,
 ) -> list[list[list[float]]]:
-    """Load the live month from day-level caches, then segment and simplify once."""
+    """Load the live month directly from files, then segment and simplify once."""
     day_frames: list[pd.DataFrame] = []
     for day in _days_in_range_for_month(year, month, start, end):
         day_root = _day_root(year, month, day)
@@ -361,10 +351,9 @@ def _get_live_month_trips(
                 day_root,
             )
             continue
-        day_hash = _compute_day_dir_hash(day_root)
         scope_label = f"day {year:04d}-{month:02d}-{day:02d}"
-        _log_cache_key_diagnostics(scope_label, day_root, day_hash)
-        day_df = _get_day_points_cached_impl(year, month, day, day_hash)
+        logger.debug("[coordinates-cache] BYPASS live %s root=%s", scope_label, day_root)
+        day_df = _load_day_points(year, month, day)
         _log_points_loaded(scope_label, day_df)
         if not day_df.empty:
             day_frames.append(day_df)
