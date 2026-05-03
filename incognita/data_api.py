@@ -196,6 +196,30 @@ def get_content_hash(features):
     return hashlib.md5(hash_input).hexdigest()[:7]
 
 
+def _log_dump_target_diagnostics(
+    target_path: Path, file_name: Path, locations_count: int, wrote_file: bool
+) -> None:
+    """Log dump write metadata needed to correlate ingestion with coordinate cache keys."""
+    day_path = target_path.parent
+    day_stat = day_path.stat()
+    hour_stat = target_path.stat()
+    day_geojson_files = sum(1 for _ in day_path.rglob("*.geojson"))
+    logger.info(
+        "[dump-cache-diagnostics] wrote_file=%s file=%s locations=%s day_dir=%s day_size=%s "
+        "day_mtime_ns=%s hour_dir=%s hour_size=%s hour_mtime_ns=%s day_geojson_files=%s",
+        wrote_file,
+        file_name,
+        locations_count,
+        day_path,
+        day_stat.st_size,
+        day_stat.st_mtime_ns,
+        target_path,
+        hour_stat.st_size,
+        hour_stat.st_mtime_ns,
+        day_geojson_files,
+    )
+
+
 def _get_coordinates_window(lookback_hours: int) -> tuple[datetime, datetime]:
     """Return the UTC window used by the coordinates endpoints."""
     end_dt = datetime.now(timezone.utc)
@@ -255,8 +279,11 @@ def dump():
             json.dump(json_data, fh, indent=2, ensure_ascii=False)
         logging.info(f"Wrote {file_name=}")
         update_db(str(file_name))
+        wrote_file = True
     else:
         logging.warning(f"File already exists, skipping: {file_name=}")
+        wrote_file = False
+    _log_dump_target_diagnostics(target_path, file_name, len(locations), wrote_file)
     return jsonify({"result": "ok"})
 
 
@@ -270,9 +297,22 @@ def get_coordinates():
             return jsonify({"status": "error", "message": "lookback_hours must be positive"}), 400
 
         start_dt, end_dt = _get_coordinates_window(lookback_hours)
-        logger.info("Fetching file-backed coordinates lookback_hours=%s", lookback_hours)
+        logger.info(
+            "[coordinates] fetching file-backed coordinates lookback_hours=%s start=%s end=%s",
+            lookback_hours,
+            start_dt.isoformat(),
+            end_dt.isoformat(),
+        )
         paths = _trip_points_to_api_paths(start_dt, end_dt)
         coordinate_count = sum(len(path) for path in paths)
+        logger.info(
+            "[coordinates] response paths=%s coordinates=%s lookback_hours=%s start=%s end=%s",
+            len(paths),
+            coordinate_count,
+            lookback_hours,
+            start_dt.isoformat(),
+            end_dt.isoformat(),
+        )
         return jsonify(
             {
                 "status": "success",

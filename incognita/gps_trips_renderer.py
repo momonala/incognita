@@ -76,6 +76,36 @@ def _compute_dir_hash(root: Path) -> str:
     return hasher.hexdigest()
 
 
+def _log_cache_key_diagnostics(scope_label: str, root: Path, cache_hash: str) -> None:
+    """Log the directory metadata used for cache invalidation plus recursive file visibility."""
+    stat = root.stat()
+    geojson_file_count = sum(1 for _ in root.rglob("*.geojson"))
+    logger.info(
+        "[coordinates-cache] lookup %s root=%s hash=%s dir_size=%s dir_mtime_ns=%s geojson_files=%s",
+        scope_label,
+        root,
+        cache_hash[:12],
+        stat.st_size,
+        stat.st_mtime_ns,
+        geojson_file_count,
+    )
+
+
+def _log_points_loaded(scope_label: str, df: pd.DataFrame) -> None:
+    """Log loaded point bounds without exposing raw coordinates."""
+    if df.empty:
+        logger.info("[coordinates-cache] result %s rows=0", scope_label)
+        return
+
+    logger.info(
+        "[coordinates-cache] result %s rows=%s first_ts=%s last_ts=%s",
+        scope_label,
+        len(df),
+        df["timestamp"].iloc[0],
+        df["timestamp"].iloc[-1],
+    )
+
+
 def _compute_month_dir_hash(month_root: Path) -> str:
     return _compute_dir_hash(month_root)
 
@@ -268,6 +298,7 @@ def _get_month_trips_cached_impl(
     month_hash: str,
 ) -> list[list[list[float]]]:
     """Load points, segment into trips, simplify. Each point is [lon, lat, ts] (ts = unix sec)."""
+    logger.info("[coordinates-cache] CACHE MISS month %04d-%02d hash=%s", year, month, month_hash[:12])
     gdf = _load_month_points(year, month)
     return _gdf_to_simplified_trip_paths(
         gdf,
@@ -282,7 +313,13 @@ def _get_month_trips_cached_impl(
 @memory.cache
 def _get_day_points_cached_impl(year: int, month: int, day: int, day_hash: str) -> pd.DataFrame:
     """Load and cache raw GPS points for a single day."""
-    logger.debug(f"[_get_day_points_cached_impl] {day_hash[:8]} | {year}-{month:02d}-{day:02d}")
+    logger.info(
+        "[coordinates-cache] CACHE MISS day %04d-%02d-%02d hash=%s",
+        year,
+        month,
+        day,
+        day_hash[:12],
+    )
     return _load_day_points(year, month, day)
 
 
@@ -319,7 +356,10 @@ def _get_live_month_trips(
             logger.info(f"No incognita_raw_data directory for {year:04d}-{month:02d}-{day:02d} ({day_root})")
             continue
         day_hash = _compute_day_dir_hash(day_root)
+        scope_label = f"day {year:04d}-{month:02d}-{day:02d}"
+        _log_cache_key_diagnostics(scope_label, day_root, day_hash)
         day_df = _get_day_points_cached_impl(year, month, day, day_hash)
+        _log_points_loaded(scope_label, day_df)
         if not day_df.empty:
             day_frames.append(day_df)
 
@@ -389,6 +429,7 @@ def get_trip_points_for_date_range(
                 logger.info(f"No incognita_raw_data directory for {year:04d}-{month:02d} ({month_root})")
                 continue
             month_hash = _compute_month_dir_hash(month_root)
+            _log_cache_key_diagnostics(f"month {year:04d}-{month:02d}", month_root, month_hash)
             monthly_trips = _get_month_trips_cached_impl(
                 year=year,
                 month=month,
