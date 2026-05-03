@@ -60,7 +60,9 @@ def update_db(
         # Create new connection
         with sqlite3.connect(db_filename) as conn:
             df.to_sql(DB_NAME, conn, if_exists="append", index=False)
-    logger.debug("Updated db_filename=%s with geojson_filename=%s shape=%s", db_filename, geojson_filename, df.shape)
+    logger.debug(
+        "Updated db_filename=%s with geojson_filename=%s shape=%s", db_filename, geojson_filename, df.shape
+    )
 
 
 def create_timestamp_index() -> None:

@@ -71,14 +71,14 @@ def send_telegram_alert(message: str):
     global last_message_id
     # if time between 11pm and 7am, don't send alerts
     if datetime.now().hour < 7 or datetime.now().hour > 23:
-        logger.info("🌙 Skipping alert because it's sleepy time!")
+        logger.debug("🌙 Skipping alert because it's sleepy time!")
         return
 
     # If this is a heartbeat recovered message, reset last_message_id and do not delete anything
     if "recovered" in message.lower():
         with last_message_lock:
             last_message_id = None
-        logger.info("Heartbeat recovered message sent. Not deleting any previous message.")
+        logger.debug("Heartbeat recovered message sent. Not deleting any previous message.")
     else:
         # Delete the previous message if it exists
         with last_message_lock:
@@ -107,7 +107,7 @@ def send_telegram_alert(message: str):
             message_id = response_data["result"]["message_id"]
             with last_message_lock:
                 last_message_id = message_id
-            logger.info(f"{message}. Telegram alert sent with ID: {message_id}")
+            logger.debug(f"{message}. Telegram alert sent with ID: {message_id}")
         else:
             logger.error(f"Failed to send Telegram message: {response_data}")
     except Exception as e:
