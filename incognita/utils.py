@@ -9,7 +9,7 @@ BYTES_PER_MB = 1024 * 1024
 # Hardcoded default map center (Berlin). Used for GPS page and as fallback when airport/city is unknown.
 BERLIN_LAT = 52.52
 BERLIN_LON = 13.405
-DEFAULT_MAP_BOX = GeoBoundingBox(center=GeoCoords(BERLIN_LAT, BERLIN_LON), width=0.065, name="Berlin")
+DEFAULT_MAP_BOX = GeoBoundingBox(center=GeoCoords(lat=BERLIN_LAT, lon=BERLIN_LON), width=0.065, name="Berlin")
 
 
 def get_ip_address() -> str:

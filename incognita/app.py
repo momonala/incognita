@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pandas as pd
 import requests
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
@@ -13,6 +14,7 @@ from incognita.countries import (
     get_visited_stats,
     visited_df_to_deck_map,
 )
+from incognita.data_models import HealthKitExportType
 from incognita.flights import (
     flights_df_to_graph,
     get_countries,
@@ -27,6 +29,12 @@ from incognita.gps_trips_renderer import (
     get_latest_location_snapshot,
     get_trips_for_date_range,
     render_trips_to_file,
+)
+from incognita.health_database import (
+    HEALTH_DB_FILE,
+    filter_dominant_hardware_rows,
+    get_health_meta,
+    load_metric_df,
 )
 from incognita.observability import configure_logging
 from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX, google_sheets_document_url
@@ -157,6 +165,169 @@ def gps():
 
 
 HEALTH_API_URL = "http://localhost:5009/api/health-data"
+
+# How each HealthKit metric is aggregated to a daily value for the chart.
+_HEALTH_METRIC_AGG: dict[str, str] = {
+    "step_count": "sum",
+    "distance": "sum",
+    "active_energy": "sum",
+    "flights_climbed": "sum",
+}
+
+_HEALTH_METRIC_UNIT: dict[str, str] = {
+    "step_count": "steps",
+    "distance": "km",
+    "active_energy": "kcal",
+    "flights_climbed": "floors",
+}
+
+
+@app.route("/health")
+def health():
+    """Render HealthKit dashboard page."""
+    return render_template("health.html")
+
+
+@app.route("/health/meta")
+def health_meta_api():
+    """Return available devices and date range for filter controls."""
+    return jsonify(get_health_meta(HEALTH_DB_FILE))
+
+
+@app.route("/health/data")
+def health_data_api():
+    """Return daily-aggregated chart data and raw samples for the active filters."""
+    metric = request.args.get("metric", "heart_rate")
+    date_from = request.args.get("from") or None
+    date_to = request.args.get("to") or None
+    devices = request.args.getlist("device") or None
+
+    valid_tables = {t.table_name for t in HealthKitExportType}
+    if metric not in valid_tables:
+        return jsonify({"error": "invalid metric"}), 400
+
+    export_type = next(t for t in HealthKitExportType if t.table_name == metric)
+    df = load_metric_df(export_type, HEALTH_DB_FILE, date_from, date_to, devices)
+
+    unit = _HEALTH_METRIC_UNIT.get(metric, "")
+    if df.empty:
+        return jsonify({"chart": [], "stats": {}, "samples": [], "unit": unit})
+
+    if metric == "distance":
+        df["value"] = df["value"] / 1000  # meters → km
+
+    # Deduplicate to dominant hardware per day — applied before chart, stats, and table
+    # so all three views are always consistent with each other.
+    df["day"] = pd.to_datetime(df["start"], utc=True).dt.date.astype(str)
+    df = filter_dominant_hardware_rows(df)
+
+    agg_fn = _HEALTH_METRIC_AGG.get(metric, "mean")
+
+    daily = df.groupby("day")["value"].agg(agg_fn).reset_index()
+    daily.columns = ["date", "value"]
+    daily["value"] = daily["value"].round(2)
+
+    # Stats are derived from daily aggregates so they reflect the same granularity
+    # the user sees in the chart (e.g. "average daily steps", not "average HK interval").
+    stats: dict = {
+        "count": int(len(df)),
+        "mean": round(float(daily["value"].mean()), 2),
+        "min": round(float(daily["value"].min()), 2),
+        "max": round(float(daily["value"].max()), 2),
+        "unit": unit,
+        "agg": agg_fn,
+    }
+    if agg_fn == "sum":
+        stats["total"] = round(float(daily["value"].sum()), 2)
+
+    daily_by_device = df.groupby(["day", "device_hardware_version"], as_index=False).agg(
+        value=("value", agg_fn), samples=("value", "count")
+    )
+    daily_by_device["value"] = daily_by_device["value"].round(2)
+    samples = daily_by_device.sort_values("day", ascending=False).to_dict(orient="records")
+
+    return jsonify(
+        {
+            "chart": daily.to_dict(orient="records"),
+            "stats": stats,
+            "samples": samples,
+            "unit": unit,
+        }
+    )
+
+
+@app.route("/health/table")
+def health_table_api():
+    """Return one row per day with columns for every metric.
+
+    Each metric independently applies the dominant-hardware filter before
+    aggregating to a daily value, so each column is self-consistent.
+    """
+    date_from = request.args.get("from") or None
+    date_to = request.args.get("to") or None
+
+    frames: dict[str, pd.DataFrame] = {}
+    for export_type in HealthKitExportType:
+        metric = export_type.table_name
+        df = load_metric_df(export_type, HEALTH_DB_FILE, date_from, date_to, devices=None)
+        if df.empty:
+            continue
+        if metric == "distance":
+            df["value"] = df["value"] / 1000
+        df["day"] = pd.to_datetime(df["start"], utc=True).dt.date.astype(str)
+        df = filter_dominant_hardware_rows(df)
+        agg_fn = _HEALTH_METRIC_AGG[metric]
+        daily = (
+            df.groupby("day", as_index=False).agg(value=("value", agg_fn)).rename(columns={"value": metric})
+        )
+        daily[metric] = daily[metric].round(2)
+        frames[metric] = daily
+
+    if not frames:
+        return jsonify([])
+
+    result = next(iter(frames.values()))
+    for frame in list(frames.values())[1:]:
+        result = result.merge(frame, on="day", how="outer")
+
+    result = result.sort_values("day", ascending=False)
+    return jsonify(result.fillna("").to_dict(orient="records"))
+
+
+@app.route("/health/summary")
+def health_summary_api():
+    """Return deduplicated totals/averages for all metrics in a date window.
+
+    Used by the chart selection panel. Query params: from, to (ISO date strings).
+    """
+    date_from = request.args.get("from") or None
+    date_to = request.args.get("to") or None
+
+    result: dict[str, dict] = {}
+    for export_type in HealthKitExportType:
+        metric = export_type.table_name
+        df = load_metric_df(export_type, HEALTH_DB_FILE, date_from, date_to, devices=None)
+        if df.empty:
+            result[metric] = None
+            continue
+
+        if metric == "distance":
+            df["value"] = df["value"] / 1000
+
+        df["day"] = pd.to_datetime(df["start"], utc=True).dt.date.astype(str)
+        df = filter_dominant_hardware_rows(df)
+
+        agg_fn = _HEALTH_METRIC_AGG.get(metric, "mean")
+        unit = _HEALTH_METRIC_UNIT.get(metric, "")
+        agg_value = float(df["value"].sum() if agg_fn == "sum" else df["value"].mean())
+        result[metric] = {
+            "value": round(agg_value, 1),
+            "unit": unit,
+            "agg": agg_fn,
+            "days": int(df["day"].nunique()),
+        }
+
+    return jsonify({"from": date_from, "to": date_to, "metrics": result})
 
 
 @app.route("/live/health")

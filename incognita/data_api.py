@@ -12,10 +12,13 @@ from pathlib import Path
 
 import requests
 from flask import Flask, Response, jsonify, request
+from pydantic import ValidationError
 
 from incognita.config import DASHBOARD_PORT
+from incognita.data_models import HealthDump, HealthKitBatch
 from incognita.database import update_db
 from incognita.gps_trips_renderer import get_trip_points_for_date_range
+from incognita.health_database import get_daily_health_dump, insert_health_batch
 from incognita.observability import configure_logging
 from incognita.utils import get_ip_address
 from incognita.values import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
@@ -284,6 +287,52 @@ def dump():
         wrote_file = False
     _log_dump_target_diagnostics(target_path, file_name, len(locations), wrote_file)
     return jsonify({"result": "ok"})
+
+
+@app.route("/ios-dump", methods=["POST"])
+@log_payload_size
+def ios_dump():
+    """Receive and store raw HealthKit samples from the iOS export app."""
+    try:
+        batch = HealthKitBatch.model_validate_json(request.get_data())
+    except ValidationError as e:
+        return jsonify({"result": "error", "message": str(e)}), 400
+
+    inserted, skipped = insert_health_batch(batch)
+    logger.debug(
+        "ios-dump batch_index=%s inserted=%s skipped=%s",
+        batch.batch_index,
+        inserted,
+        skipped,
+    )
+    logger.info(f"ios-dump batch_index={batch.batch_index} inserted={inserted} skipped={skipped}")
+    return jsonify({"result": "ok", "inserted": inserted, "skipped": skipped})
+
+
+@app.route("/health-data", methods=["GET"])
+def health_data():
+    """Return a daily health summary aggregated from the HealthKit database.
+
+    Query params:
+        date (str): YYYY-MM-DD. Defaults to today (local time).
+
+    Returns JSON matching the HealthDump schema.
+    """
+    date_str = request.args.get("date") or datetime.now().strftime("%Y-%m-%d")
+    if date_str == "today":
+        date_str = datetime.now().strftime("%Y-%m-%d")
+
+    totals = get_daily_health_dump(date_str)
+    dump = HealthDump(
+        date=date_str,
+        steps=int(totals["steps"]) if totals["steps"] is not None else None,
+        kcals=totals["kcals"],
+        km=totals["km"],
+        flights_climbed=int(totals["flights_climbed"]) if totals["flights_climbed"] is not None else None,
+        weight=None,
+        recorded_at=datetime.now(),
+    )
+    return jsonify(dump.model_dump(mode="json")), 200
 
 
 @app.route("/coordinates", methods=["GET"])

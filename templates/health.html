@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Health | Incognita</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.25/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.10.25/js/jquery.dataTables.min.js"></script>
+    <script src="{{ url_for('static', filename='table_utils.js') }}"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    {% include 'navbar.html' %}
+
+    <main class="health-page">
+
+        <div class="health-controls" role="toolbar" aria-label="Health filters">
+            <div class="health-controls__group" role="group" aria-label="Metric">
+                <button class="ctrl-btn ctrl-btn--active" data-metric="step_count">Steps</button>
+                <button class="ctrl-btn" data-metric="distance">Distance</button>
+                <button class="ctrl-btn" data-metric="active_energy">Calories</button>
+                <button class="ctrl-btn" data-metric="flights_climbed">Flights</button>
+            </div>
+
+            <div class="health-controls__group" role="group" aria-label="Time range">
+                <button class="ctrl-btn" data-range="7">7D</button>
+                <button class="ctrl-btn ctrl-btn--active" data-range="30">1M</button>
+                <button class="ctrl-btn" data-range="90">3M</button>
+                <button class="ctrl-btn" data-range="365">1Y</button>
+                <button class="ctrl-btn" data-range="0">All</button>
+            </div>
+
+            <div class="health-controls__group health-controls__group--dates" id="customDates" style="display:none;" aria-label="Custom date range">
+                <input type="date" id="dateFrom" class="ctrl-input" aria-label="From date">
+                <span class="health-controls__sep">—</span>
+                <input type="date" id="dateTo" class="ctrl-input" aria-label="To date">
+            </div>
+
+        </div>
+
+        <div class="health-stats" role="region" aria-label="Summary statistics">
+            <div class="stat-card stat-card--compact">
+                <span class="stat-card__label">Samples</span>
+                <span class="stat-card__value" id="statCount">—</span>
+            </div>
+            <div class="stat-card stat-card--compact">
+                <span class="stat-card__label" id="statMainLabel">Average</span>
+                <span class="stat-card__value" id="statMain">—</span>
+            </div>
+            <div class="stat-card stat-card--compact">
+                <span class="stat-card__label">Min</span>
+                <span class="stat-card__value" id="statMin">—</span>
+            </div>
+            <div class="stat-card stat-card--compact">
+                <span class="stat-card__label">Max</span>
+                <span class="stat-card__value" id="statMax">—</span>
+            </div>
+            <div class="stat-card stat-card--compact">
+                <span class="stat-card__label">Average</span>
+                <span class="stat-card__value" id="statAvg">—</span>
+            </div>
+            <div class="stat-card stat-card--compact" id="statDaysCard">
+                <span class="stat-card__label">Days</span>
+                <span class="stat-card__value" id="statDays">—</span>
+            </div>
+        </div>
+
+        <div class="health-content">
+            <section class="health-chart-card" aria-label="Chart">
+                <div id="healthChart"></div>
+            </section>
+
+            <section class="health-selection-stats" id="selectionStats" style="display:none;" aria-label="Selection summary">
+                <div class="health-selection-stats__label" id="selectionLabel"></div>
+                <div class="health-selection-stats__cards" id="selectionCards"></div>
+            </section>
+
+            <section class="health-table-wrap" aria-label="Daily totals by metric">
+                <table class="data-table datatable" id="healthTable">
+                    <thead>
+                        <tr>
+                            <th scope="col">Day</th>
+                            <th scope="col">Steps</th>
+                            <th scope="col">Distance (km)</th>
+                            <th scope="col">Calories (kcal)</th>
+                            <th scope="col">Flights</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr><th></th><th></th><th></th><th></th><th></th></tr>
+                    </tfoot>
+                </table>
+            </section>
+        </div>
+
+    </main>
+
+<script>
+(function () {
+    // ── State ────────────────────────────────────────────────────────────────
+    let currentMetric = 'step_count';
+    let currentRange  = 30;      // days; 0 = all
+    let dateFrom = '';
+    let dateTo   = '';
+
+    const METRIC_LABEL = {
+        step_count:      'Steps',
+        distance:        'Distance',
+        active_energy:   'Calories',
+        flights_climbed: 'Flights',
+    };
+
+    // ── DataTable ────────────────────────────────────────────────────────────
+    // 5 columns: Day, Steps, Distance, Calories, Flights
+    const colFilters = ['', '', '', '', ''];
+
+    function matchFilter(cellValue, filterValue) {
+        if (filterValue === '') return true;
+        const op = filterValue[0];
+        if (op === '>' || op === '<') {
+            const threshold = parseFloat(filterValue.slice(1).trim());
+            const num       = parseFloat(String(cellValue).replace(/,/g, ''));
+            if (!isNaN(num) && !isNaN(threshold)) {
+                return op === '>' ? num > threshold : num < threshold;
+            }
+        }
+        return String(cellValue).toLowerCase().includes(filterValue.toLowerCase());
+    }
+
+    $.fn.dataTable.ext.search.push(function (_settings, rowData) {
+        return colFilters.every((f, i) => matchFilter(rowData[i], f));
+    });
+
+    const PLACEHOLDERS = ['e.g. 2024-01', '>5000', '>5', '>500', '>5'];
+
+    let filterTimer = null;
+    function scheduleRedraw() {
+        clearTimeout(filterTimer);
+        filterTimer = setTimeout(() => dt.draw(), 200);
+    }
+
+    const dt = $('#healthTable').DataTable({
+        paging:    true,
+        searching: true,
+        dom:       'lrtip',
+        ordering:  true,
+        pageLength: 25,
+        order:     [[0, 'desc']],
+        language:  { emptyTable: 'No data for this range.' },
+        columnDefs: [{ type: 'num', targets: [1, 2, 3, 4] }],
+        initComplete: function () {
+            this.api().columns().every(function (i) {
+                const input = $('<input type="text">').attr('placeholder', PLACEHOLDERS[i]);
+                $(this.footer()).empty().append(input);
+                input.on('input', function () {
+                    colFilters[i] = this.value;
+                    scheduleRedraw();
+                });
+            });
+        },
+    });
+
+
+    // ── Plotly helpers ───────────────────────────────────────────────────────
+    const ACCENT = '#0071e3';
+    const PLOTLY_FONT = {
+        family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        size: 13,
+        color: '#1d1d1f',
+    };
+    const PLOTLY_LAYOUT_BASE = {
+        paper_bgcolor: 'transparent',
+        plot_bgcolor:  'transparent',
+        margin: { t: 16, r: 20, b: 48, l: 56 },
+        font: PLOTLY_FONT,
+        xaxis: {
+            gridcolor: '#e8e8ed',
+            zeroline: false,
+            tickfont: PLOTLY_FONT,
+        },
+        yaxis: {
+            gridcolor: '#e8e8ed',
+            zeroline: false,
+            tickfont: PLOTLY_FONT,
+        },
+    };
+
+    function renderChart(chartData, unit, agg) {
+        const isLine = agg === 'mean';
+        const trace = isLine ? {
+            x:    chartData.map(d => d.date),
+            y:    chartData.map(d => d.value),
+            type: 'scatter',
+            mode: 'lines+markers',
+            line:   { color: ACCENT, width: 2 },
+            marker: { color: ACCENT, size: 4 },
+            hovertemplate: '%{y:.1f} ' + unit + '<extra></extra>',
+        } : {
+            x:    chartData.map(d => d.date),
+            y:    chartData.map(d => d.value),
+            type: 'bar',
+            marker: { color: ACCENT, opacity: 0.85 },
+            hovertemplate: '%{y:,.0f} ' + unit + '<extra></extra>',
+        };
+
+        const layout = Object.assign({}, PLOTLY_LAYOUT_BASE, {
+            yaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.yaxis, { title: { text: unit, font: { size: 12 } } }),
+        });
+
+        Plotly.react('healthChart', [trace], layout, { responsive: true, displayModeBar: false });
+    }
+
+    function renderEmptyChart(message) {
+        Plotly.react('healthChart', [], Object.assign({}, PLOTLY_LAYOUT_BASE, {
+            annotations: [{
+                text: message, showarrow: false,
+                font: { size: 14, color: '#6e6e73' },
+                xref: 'paper', yref: 'paper', x: 0.5, y: 0.5,
+            }],
+        }), { responsive: true, displayModeBar: false });
+    }
+
+    // ── Stats cards ──────────────────────────────────────────────────────────
+    function updateStats(stats, chartData) {
+        const fmt = n => n == null ? '—' : Number.isInteger(n) ? n.toLocaleString() : (+n).toLocaleString(undefined, { maximumFractionDigits: 1 });
+        document.getElementById('statCount').textContent   = fmt(stats.count);
+        document.getElementById('statMin').textContent     = fmt(stats.min)  + ' ' + (stats.unit || '');
+        document.getElementById('statMax').textContent     = fmt(stats.max)  + ' ' + (stats.unit || '');
+        document.getElementById('statAvg').textContent     = fmt(stats.mean) + ' ' + (stats.unit || '');
+        document.getElementById('statDays').textContent    = chartData.length;
+
+        const isSum = stats.agg === 'sum';
+        document.getElementById('statMainLabel').textContent = isSum ? 'Total' : 'Average';
+        const mainVal = isSum ? stats.total : stats.mean;
+        document.getElementById('statMain').textContent = fmt(mainVal) + ' ' + (stats.unit || '');
+    }
+
+    // ── Table ────────────────────────────────────────────────────────────────
+    function fmt(v, decimals) {
+        return v === '' || v == null ? '—' : (+v).toLocaleString(undefined, { maximumFractionDigits: decimals });
+    }
+
+    function loadTable() {
+        const params = new URLSearchParams();
+        if (dateFrom) params.set('from', dateFrom);
+        if (dateTo)   params.set('to',   dateTo);
+
+        fetch('/health/table?' + params)
+            .then(r => r.json())
+            .then(rows => {
+                dt.clear();
+                dt.rows.add(rows.map(r => [
+                    r.day                || '—',
+                    r.step_count         !== '' ? +r.step_count         : '',
+                    r.distance           !== '' ? +r.distance           : '',
+                    r.active_energy      !== '' ? +r.active_energy      : '',
+                    r.flights_climbed    !== '' ? +r.flights_climbed     : '',
+                ]));
+                dt.draw();
+            })
+            .catch(() => { dt.clear().draw(); });
+    }
+
+    // ── Date range helpers ───────────────────────────────────────────────────
+    function setDateRange(rangeDays) {
+        if (rangeDays === 0) {
+            dateFrom = '';
+            dateTo   = '';
+        } else {
+            const to   = new Date();
+            const from = new Date(to);
+            from.setDate(from.getDate() - rangeDays);
+            dateTo   = to.toISOString().slice(0, 10);
+            dateFrom = from.toISOString().slice(0, 10);
+        }
+        document.getElementById('dateFrom').value = dateFrom;
+        document.getElementById('dateTo').value   = dateTo;
+    }
+
+    // ── Data fetch ───────────────────────────────────────────────────────────
+    function loadData() {
+        const params = new URLSearchParams({ metric: currentMetric });
+        if (dateFrom) params.set('from', dateFrom);
+        if (dateTo)   params.set('to',   dateTo);
+
+        fetch('/health/data?' + params)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.chart || data.chart.length === 0) {
+                    renderEmptyChart('No data for this selection.');
+                    document.getElementById('statCount').textContent = '0';
+                    ['statMain', 'statMin', 'statMax', 'statAvg', 'statDays'].forEach(id => {
+                        document.getElementById(id).textContent = '—';
+                    });
+                    dt.clear().draw();
+                    return;
+                }
+                renderChart(data.chart, data.unit, data.stats.agg);
+                updateStats(data.stats, data.chart);
+            })
+            .catch(() => renderEmptyChart('Failed to load data.'));
+    }
+
+    // ── Event wiring ─────────────────────────────────────────────────────────
+    document.querySelectorAll('[data-metric]').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('[data-metric]').forEach(b => b.classList.remove('ctrl-btn--active'));
+            this.classList.add('ctrl-btn--active');
+            currentMetric = this.dataset.metric;
+            loadData();  // chart + stats only; table is metric-independent
+        });
+    });
+
+    document.querySelectorAll('[data-range]').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('[data-range]').forEach(b => b.classList.remove('ctrl-btn--active'));
+            this.classList.add('ctrl-btn--active');
+            currentRange = parseInt(this.dataset.range, 10);
+            document.getElementById('customDates').style.display = 'none';
+            setDateRange(currentRange);
+            loadData();
+            loadTable();
+        });
+    });
+
+    ['dateFrom', 'dateTo'].forEach(id => {
+        document.getElementById(id).addEventListener('change', function () {
+            dateFrom = document.getElementById('dateFrom').value;
+            dateTo   = document.getElementById('dateTo').value;
+            document.querySelectorAll('[data-range]').forEach(b => b.classList.remove('ctrl-btn--active'));
+            document.getElementById('customDates').style.display = 'flex';
+            loadData();
+            loadTable();
+        });
+    });
+
+    // ── Selection summary (plotly zoom / relayout) ───────────────────────────
+    const METRIC_DISPLAY = {
+        step_count:    { label: 'Steps',    icon: '👟' },
+        distance:      { label: 'Distance', icon: '📍' },
+        active_energy: { label: 'Calories', icon: '🔥' },
+        flights_climbed: { label: 'Flights', icon: '🏔️' },
+    };
+
+    function showSelectionStats(from, to) {
+        const params = new URLSearchParams();
+        if (from) params.set('from', from.slice(0, 10));
+        if (to)   params.set('to',   to.slice(0, 10));
+
+        fetch('/health/summary?' + params)
+            .then(r => r.json())
+            .then(data => {
+                const panel  = document.getElementById('selectionStats');
+                const label  = document.getElementById('selectionLabel');
+                const cards  = document.getElementById('selectionCards');
+
+                label.textContent = `${data.from || '—'} → ${data.to || '—'}`;
+                cards.innerHTML = '';
+
+                Object.entries(data.metrics).forEach(([key, m]) => {
+                    if (!m) return;
+                    const info = METRIC_DISPLAY[key] || { label: key, icon: '' };
+                    const fmt  = m.agg === 'sum'
+                        ? m.value.toLocaleString(undefined, { maximumFractionDigits: 1 })
+                        : m.value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+                    const card = document.createElement('div');
+                    card.className = 'health-sel-card' + (key === currentMetric ? ' health-sel-card--active' : '');
+                    card.innerHTML = `<span class="health-sel-card__icon">${info.icon}</span>`
+                        + `<span class="health-sel-card__label">${info.label}</span>`
+                        + `<span class="health-sel-card__value">${fmt} ${m.unit}</span>`
+                        + `<span class="health-sel-card__days">${m.days}d</span>`;
+                    cards.appendChild(card);
+                });
+
+                panel.style.display = 'block';
+            })
+            .catch(() => {});
+    }
+
+    function hideSelectionStats() {
+        document.getElementById('selectionStats').style.display = 'none';
+    }
+
+    document.getElementById('healthChart').on('plotly_relayout', function (eventData) {
+        const x0 = eventData['xaxis.range[0]'];
+        const x1 = eventData['xaxis.range[1]'];
+        if (x0 && x1) {
+            showSelectionStats(x0, x1);
+        } else if (eventData['xaxis.autorange']) {
+            hideSelectionStats();
+        }
+    });
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+    setDateRange(currentRange);
+    loadData();
+    loadTable();
+})();
+</script>
+</body>
+</html>

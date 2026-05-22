@@ -789,3 +789,205 @@ tfoot input {
 .submit-button:focus {
     outline: none;
 }
+
+/* ── Health page ─────────────────────────────────────────────────────────── */
+
+.health-page {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - var(--nav-height));
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+}
+
+.health-controls {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-sm) var(--space-md);
+    padding: var(--space-sm) var(--space-lg);
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border-light);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.health-controls__group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.health-controls__group + .health-controls__group {
+    padding-left: var(--space-md);
+    border-left: 1px solid var(--color-border-light);
+}
+
+.health-controls__group--dates {
+    gap: var(--space-sm);
+}
+
+.health-controls__sep {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+}
+
+.ctrl-btn {
+    padding: 5px var(--space-sm);
+    font-size: 13px;
+    font-weight: 400;
+    font-family: var(--font-sans);
+    color: var(--color-text-secondary);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+
+.ctrl-btn:hover {
+    color: var(--color-text);
+    border-color: var(--color-border);
+    background: var(--color-bg);
+}
+
+.ctrl-btn--active {
+    color: var(--color-accent);
+    background: rgba(0, 113, 227, 0.08);
+    border-color: rgba(0, 113, 227, 0.3);
+    font-weight: 500;
+}
+
+.ctrl-select,
+.ctrl-input {
+    padding: 5px var(--space-sm);
+    font-size: 13px;
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.ctrl-select:focus,
+.ctrl-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+.health-stats {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-sm) var(--space-xl);
+    padding: var(--space-sm) var(--space-lg);
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+.health-content {
+    flex: 1 1 0;
+    padding: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+    max-width: 1400px;
+    width: 100%;
+    box-sizing: border-box;
+    align-self: center;
+}
+
+.health-chart-card {
+    background: var(--color-surface);
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+    padding: var(--space-lg);
+}
+
+#healthChart {
+    width: 100%;
+    height: 320px;
+}
+
+.health-table-wrap {
+    overflow-x: auto;
+}
+
+.health-selection-stats {
+    background: var(--color-surface);
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+    padding: var(--space-md) var(--space-lg);
+}
+
+.health-selection-stats__label {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-sm);
+    letter-spacing: 0.02em;
+}
+
+.health-selection-stats__cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+}
+
+.health-sel-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--color-bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--color-border-light);
+    min-width: 160px;
+}
+
+.health-sel-card--active {
+    border-color: rgba(0, 113, 227, 0.35);
+    background: rgba(0, 113, 227, 0.05);
+}
+
+.health-sel-card__icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.health-sel-card__label {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    flex: 1;
+}
+
+.health-sel-card__value {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text);
+    letter-spacing: -0.02em;
+}
+
+.health-sel-card__days {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    margin-left: var(--space-xs);
+}
+
+.health-table-filters {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) 0 var(--space-sm);
+}
+
+.health-table-filter-label {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+}

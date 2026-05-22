@@ -32,7 +32,7 @@ MAP_TITLE = "Berlin"
 VIDEO_WIDTH = 1920
 VIDEO_HEIGHT = 1080
 
-BERLIN_CENTER = GeoCoords(52.511626, 13.395842)
+BERLIN_CENTER = GeoCoords(lat=52.511626, lon=13.395842)
 # Half-width in degrees (lat); lon half-width is derived from canvas aspect to fill frame
 LAT_HALF_WIDTH = 0.205 * 0.75
 
