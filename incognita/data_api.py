@@ -15,10 +15,11 @@ from flask import Flask, Response, jsonify, request
 from pydantic import ValidationError
 
 from incognita.config import DASHBOARD_PORT
-from incognita.data_models import HealthDump, HealthKitBatch
+from incognita.data_models import DailyMotionStats, HealthDump, HealthKitBatch
 from incognita.database import update_db
 from incognita.gps_trips_renderer import get_trip_points_for_date_range
 from incognita.health_database import get_daily_health_dump, insert_health_batch
+from incognita.motion_stats import get_daily_motion_stats
 from incognita.observability import configure_logging
 from incognita.utils import get_ip_address
 from incognita.values import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
@@ -307,6 +308,37 @@ def ios_dump():
     )
     logger.info(f"ios-dump batch_index={batch.batch_index} inserted={inserted} skipped={skipped}")
     return jsonify({"result": "ok", "inserted": inserted, "skipped": skipped})
+
+
+@app.route("/motion-stats", methods=["GET"])
+def motion_stats():
+    """Return today's GPS motion summary from the location database.
+
+    Loads all points for the requested calendar day (local date by default). Moving stats use
+    rows with speed > 0; ``motion_type.stationary`` time uses rows labeled ``stationary`` (distance always 0).
+    Distance and time are summed from consecutive point segments (haversine); altitude
+    ascended/descended sum positive/negative deltas between consecutive readings; speeds use
+    per-row Overland speed values (m/s).
+
+    Query params:
+        date (str): YYYY-MM-DD or ``today``. Defaults to today (local time).
+    """
+    # extract and validate date
+    date_str = request.args.get("date") or datetime.now().strftime("%Y-%m-%d")
+    if date_str == "today":
+        date_str = datetime.now().strftime("%Y-%m-%d")
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return (
+            jsonify(
+                {"status": "error", "message": "Invalid date format: please provide date as YYYY-MM-DD."}
+            ),
+            400,
+        )
+
+    stats = DailyMotionStats.model_validate(get_daily_motion_stats(date_str))
+    return jsonify(stats.model_dump(mode="json")), 200
 
 
 @app.route("/health-data", methods=["GET"])

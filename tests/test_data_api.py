@@ -114,3 +114,31 @@ def test_coordinates_preserves_trip_segments(monkeypatch):
             },
         ],
     ]
+
+
+def test_motion_stats_returns_daily_summary(monkeypatch):
+    """Verify /motion-stats returns the DailyMotionStats payload."""
+    sample = {
+        "date": "2025-01-01",
+        "total_km": 12.5,
+        "max_speed_m_s": 20.0,
+        "avg_speed_m_s": 5.0,
+        "time_spent_seconds": 3600.0,
+        "altitude_ascended_m": 150.0,
+        "altitude_descended_m": 75.0,
+        "motion_type": {
+            "automotive": {"distance_km": 6.5, "time_seconds": 3000.0},
+            "cycling": {"distance_km": 3.0, "time_seconds": 300.0},
+            "running": {"distance_km": 1.5, "time_seconds": 150.0},
+            "stationary": {"distance_km": 0.0, "time_seconds": 900.0},
+            "unknown": {"distance_km": 1.0, "time_seconds": 100.0},
+            "walking": {"distance_km": 2.0, "time_seconds": 200.0},
+        },
+    }
+    monkeypatch.setattr("incognita.data_api.get_daily_motion_stats", lambda date: sample)
+
+    with app.test_client() as client:
+        response = client.get("/motion-stats?date=2025-01-01")
+
+    assert response.status_code == 200
+    assert response.get_json() == sample

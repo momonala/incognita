@@ -100,3 +100,30 @@ def extract_properties_from_geojson(
             continue
 
     return geo_data_parsed
+
+
+def get_gdf_for_map(
+    date_min: str,
+    date_max: str,
+    min_accuracy: float = 100.0,
+    db_filename: str = DB_FILE,
+) -> pd.DataFrame:
+    """Return GPS points for the DB-backed /coordinates API.
+
+    Only moving points (speed > 0) with horizontal_accuracy <= min_accuracy
+    in the given timestamp range.
+
+    Returns:
+        DataFrame with columns lon, lat, timestamp, accuracy, speed.
+    """
+    with sqlite3.connect(db_filename) as conn:
+        query = f"""
+            SELECT lon, lat, timestamp, horizontal_accuracy AS accuracy, speed
+            FROM {DB_NAME}
+            WHERE timestamp >= ? AND timestamp <= ?
+            AND speed > 0
+            AND horizontal_accuracy <= ?
+            ORDER BY timestamp ASC
+        """
+        df = pd.read_sql(query, conn, params=[date_min, date_max, min_accuracy])
+    return df.reset_index(drop=True)

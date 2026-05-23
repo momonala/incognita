@@ -49,6 +49,7 @@ flowchart LR
 - **Flight Tracking**: Analyze flight history with statistics and visualizations
 - **Countries Visited**: Track and visualize countries visited with passport-style view
 - **Heartbeat Monitoring**: Telegram alerts for data streaming downtime
+- **Daily Motion Stats**: Per-day distance, speed, altitude gain/loss, and time by motion type from the GPS database
 
 ## Prerequisites
 
@@ -102,7 +103,8 @@ Main Flask application for viewing data:
 
 ```bash
 uv run app
-# or: python -m incognita.app```
+# or: python -m incognita.app
+```
 
 Open `http://localhost:5004`
 
@@ -112,7 +114,7 @@ Available routes:
 - `/flights` - Flight history and statistics
 - `/passport` - Countries visited visualization
 - `/live` - Live location with animated day-path replay
-```
+
 ## Project Structure
 
 ```bash
@@ -120,7 +122,8 @@ incognita/
 ├── incognita/
 │   ├── app.py                  # Main Flask web app (port 5004)
 │   ├── data_api.py             # GPS data receiver server (port 5003)
-│   ├── database.py             # SQLite database operations
+│   ├── database.py             # SQLite ingest and GeoJSON parsing
+│   ├── motion_stats.py         # Daily motion stats from geo_data.db
 │   ├── geo_distance.py         # Great-circle (haversine) distance
 │   ├── gps_point_series.py     # GPS point series: segment speed and distance
 │   ├── gps.py                  # GPS data API + Deck.gl map rendering
@@ -157,6 +160,9 @@ incognita/
 | `/status` | GET | Server status |
 | `/dump` | POST | Receive GeoJSON location data from Overland app |
 | `/heartbeat` | POST | Heartbeat endpoint for monitoring; forwards to web app |
+| `/ios-dump` | POST | Receive HealthKit sample batches from the iOS export app |
+| `/health-data` | GET | Daily HealthKit summary (steps, distance, energy, flights climbed) |
+| `/motion-stats` | GET | Daily GPS motion summary from SQLite (distance, speed, altitude, by motion type) |
 | `/coordinates` | GET | Fetch simplified coordinates from raw GPS files |
 
 ### Web App (`:5004`)
@@ -194,6 +200,36 @@ Response:
   ]
 }
 ```
+
+### `/motion-stats`
+
+Daily GPS activity from `geo_data.db` for the full calendar day. Moving distance, speed, and per-motion breakdowns use rows with `speed > 0`; `motion_type.stationary` reports time only (distance is always 0). Distance and time use haversine segments between consecutive readings; altitude gain/loss uses moving rows only; speeds use per-row Overland values (m/s).
+
+Query params:
+- `date` - Calendar day as `YYYY-MM-DD`, or `today` (default: today in local time)
+
+Response:
+```json
+{
+  "date": "2025-01-01",
+  "total_km": 12.5,
+  "max_speed_m_s": 20.0,
+  "avg_speed_m_s": 5.0,
+  "time_spent_seconds": 3600.0,
+  "altitude_ascended_m": 150.0,
+  "altitude_descended_m": 75.0,
+  "motion_type": {
+    "automotive": { "distance_km": 6.5, "time_seconds": 3000.0 },
+    "cycling": { "distance_km": 3.0, "time_seconds": 300.0 },
+    "running": { "distance_km": 1.5, "time_seconds": 150.0 },
+    "stationary": { "distance_km": 0.0, "time_seconds": 900.0 },
+    "unknown": { "distance_km": 1.0, "time_seconds": 100.0 },
+    "walking": { "distance_km": 2.0, "time_seconds": 200.0 }
+  }
+}
+```
+
+`motion_type` keys: `automotive`, `cycling`, `running`, `stationary`, `unknown`, `walking`. Only rows with `speed > 0` contribute distance and moving time; `stationary` time is summed from rows labeled `stationary` on the full-day timeline.
 
 ## Data Model
 
@@ -255,8 +291,9 @@ This script:
 |---------|-------------|
 | `timestamp` | ISO 8601 timestamp (unique primary key) |
 | `horizontal_accuracy` | GPS accuracy in meters (filtered at ≤200m) |
-| `speed` | Calculated speed between GPS points |
-| `motion` | Motion type from Overland (walking, driving, etc.) |
+| `speed` | Speed from Overland (m/s, nullable) |
+| `motion` | Motion type from Overland (`stationary`, `walking`, `cycling`, `automotive`, etc.) |
+| Motion categories | `/motion-stats` reports `automotive`, `cycling`, `running`, `stationary`, `unknown`, `walking` |
 | Content hash | MD5 hash of first/last timestamp + count for deduplication |
 
 ## Storage

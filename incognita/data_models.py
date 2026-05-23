@@ -165,3 +165,27 @@ class HealthKitBatch(BaseModel):
 
     batch_index: int = Field(alias="batchIndex")
     samples: list[HealthKitSample] = Field(default_factory=list)
+
+
+class MotionCategoryStats(BaseModel):
+    """Distance and duration for one motion type on a given day."""
+
+    model_config = _FROZEN
+
+    distance_km: float
+    time_seconds: float
+
+
+class DailyMotionStats(BaseModel):
+    """Daily GPS motion summary returned by /motion-stats."""
+
+    model_config = _FROZEN
+
+    date: str
+    total_km: float
+    max_speed_m_s: float
+    avg_speed_m_s: float
+    time_spent_seconds: float
+    altitude_ascended_m: float
+    altitude_descended_m: float
+    motion_type: dict[str, MotionCategoryStats]
