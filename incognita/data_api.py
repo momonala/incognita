@@ -163,7 +163,7 @@ def watchdog():
                 f"Downtime: {format_downtime(downtime_sec)}\n"
                 f"Last heartbeat: {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
             )
-            send_telegram_alert(message)
+            # send_telegram_alert(message)
             next_alert = alert_schedule[0]
             is_down = False
 
