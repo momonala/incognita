@@ -2,7 +2,7 @@
 
 import pytest
 
-from incognita.geo_distance import get_haversine_dist
+from incognita.gps_geometry import get_haversine_dist
 
 
 @pytest.mark.parametrize(

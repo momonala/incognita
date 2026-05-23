@@ -9,13 +9,15 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+import pydeck as pdk
 
+from incognita.config import GPS_MAP_FILENAME
 from incognita.data_models import GeoBoundingBox, LiveLocationSnapshot, TripDisplayStats
 from incognita.database import extract_properties_from_geojson, read_geojson_file
-from incognita.gps import gps_df_to_deck_map
-from incognita.gps_point_series import add_speed_to_gdf
+from incognita.gps_geometry import add_speed_to_gdf
 from incognita.observability import configure_logging, timed
-from incognita.utils import DEFAULT_MAP_BOX
+from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX
+from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +40,75 @@ DEFAULT_MIN_POINTS = 10
 DEFAULT_SIMPLIFY_TOLERANCE_M = 5.0
 LATEST_POINT_LOOKBACK_DAYS = 7
 
+GPS_POINT_RADIUS_PX = 8
+GPS_POINT_OPACITY = 180
+
 memory = joblib.Memory(location=Path(".cache"), verbose=0)
+
+
+@timed
+def gps_df_to_deck_map(
+    bbox: GeoBoundingBox,
+    trips_df: pd.DataFrame,
+    points_df: pd.DataFrame = pd.DataFrame(),
+    filename: str = GPS_MAP_FILENAME,
+) -> tuple[pdk.Deck, int, float]:
+    """Build a PyDeck map HTML file from trip paths and optional scatter points."""
+    layers = []
+    if not points_df.empty:
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                points_df,
+                get_position=["lon", "lat"],
+                get_radius=GPS_POINT_RADIUS_PX,
+                get_fill_color=[255, 111, 0, GPS_POINT_OPACITY],
+                pickable=True,
+            )
+        )
+
+    if not trips_df.empty:
+        layers.append(
+            pdk.Layer(
+                "TripsLayer",
+                trips_df,
+                get_path="geometry",
+                get_color=[255, 111, 0, 200],
+                width_min_pixels=3,
+                rounded=True,
+                pickable=True,
+            )
+        )
+
+    view_state = pdk.ViewState(
+        longitude=bbox.center.lon,
+        latitude=bbox.center.lat,
+        zoom=12,
+        pitch=0,
+        bearing=0,
+    )
+
+    deck = pdk.Deck(
+        layers=layers,
+        initial_view_state=view_state,
+        api_keys={"mapbox": MAPBOX_API_KEY, "google_maps": GOOGLE_MAPS_API_KEY},
+        map_provider="google_maps",
+        map_style="satellite",
+    )
+    deck.to_html(filename=filename)
+    size_bytes = os.path.getsize(filename)
+    size_mb = size_bytes / BYTES_PER_MB
+    points_count = len(points_df)
+    if not trips_df.empty and "geometry" in trips_df.columns:
+        points_count += sum(len(geom) for geom in trips_df["geometry"])
+    logger.debug(
+        "[gps_df_to_deck_map] points_shape=%s trips_shape=%s filename=%s size_mb=%.2f",
+        points_df.shape,
+        trips_df.shape,
+        filename,
+        size_mb,
+    )
+    return deck, points_count, size_mb
 
 
 def _month_root(year: int, month: int) -> Path:

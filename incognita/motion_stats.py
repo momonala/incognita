@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from incognita.database import DB_FILE, DB_NAME
-from incognita.gps_point_series import add_speed_to_gdf
+from incognita.gps_geometry import add_speed_to_gdf
 
 MOTION_CATEGORIES = ("automotive", "cycling", "running", "stationary", "unknown", "walking")
 
