@@ -119,23 +119,6 @@ def filter_dominant_hardware_rows(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def keep_dominant_hardware(df: pd.DataFrame) -> pd.DataFrame:
-    """For each day, keep only the hardware version with the most raw samples.
-
-    When multiple devices record the same metric on the same day, the one with
-    the highest sample count is assumed to be the primary source. Ties are broken
-    by keeping the first entry after sorting by device_hardware_version ascending.
-    """
-    if df.empty or "samples" not in df.columns:
-        return df
-    return (
-        df.sort_values("device_hardware_version")
-        .loc[df.groupby("day")["samples"].transform("max") == df["samples"]]
-        .drop_duplicates(subset="day", keep="first")
-        .reset_index(drop=True)
-    )
-
-
 def load_metric_df(
     export_type: HealthKitExportType,
     db_filename: str = HEALTH_DB_FILE,

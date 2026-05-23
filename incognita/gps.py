@@ -6,41 +6,14 @@ import pydeck as pdk
 
 from incognita.config import GPS_MAP_FILENAME
 from incognita.data_models import GeoBoundingBox
-from incognita.database import get_gdf_for_map
-from incognita.gps_point_series import add_speed_to_gdf
 from incognita.observability import timed
 from incognita.utils import BYTES_PER_MB
 from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
 
 logger = logging.getLogger(__name__)
 
-# Align with /coordinates API: min_accuracy and max_distance in meters
-GPS_MIN_ACCURACY_M = 100.0
-GPS_MAX_DISTANCE_M = 100.0
 GPS_POINT_RADIUS_PX = 8
 GPS_POINT_OPACITY = 180
-
-
-def get_filtered_gps_df(
-    date_min: str,
-    date_max: str,
-    min_accuracy_m: float = GPS_MIN_ACCURACY_M,
-    max_distance_m: float = GPS_MAX_DISTANCE_M,
-) -> pd.DataFrame:
-    """Single code path: load GPS points (speed>0, accuracy), add speed, filter by segment distance.
-
-    Used by the DB-backed GET /coordinates endpoint.
-    """
-    gdf = get_gdf_for_map(date_min, date_max, min_accuracy=min_accuracy_m)
-    if gdf.empty:
-        return gdf
-    gdf["timestamp"] = pd.to_datetime(gdf["timestamp"])
-    gdf = add_speed_to_gdf(gdf)
-    gdf["meters"] = gdf["meters"].fillna(0.0)
-    gdf = gdf[gdf["meters"] <= max_distance_m]
-    mem_mb = gdf.memory_usage(deep=True).sum() / BYTES_PER_MB
-    logger.debug("[get_filtered_gps_df] shape=%s mem=%.2f MB", gdf.shape, mem_mb)
-    return gdf
 
 
 @timed

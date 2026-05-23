@@ -1,11 +1,8 @@
 import json
 import logging
 import sqlite3
-from functools import lru_cache
 
 import pandas as pd
-
-from incognita.observability import timed
 
 logger = logging.getLogger(__name__)
 
@@ -13,25 +10,6 @@ DB_FILE = "data/geo_data.db"
 DB_NAME = "overland"
 
 MIN_HORIZONTAL_ACCURACY = 200.0
-
-
-@timed
-@lru_cache()
-def get_gdf_from_db(
-    db_filename: str = DB_FILE,
-    date_min: str | None = None,
-    date_max: str | None = None,
-) -> pd.DataFrame:
-    """Return the cached geojson/location dataframe, optionally filtered by timestamp range."""
-    query = f"SELECT lon, lat, timestamp FROM {DB_NAME}"
-    params: list = []
-    if date_min is not None and date_max is not None:
-        query += " WHERE timestamp >= ? AND timestamp <= ?"
-        params = [date_min, date_max]
-    query += " ORDER BY timestamp"
-    with sqlite3.connect(db_filename) as conn:
-        df = pd.read_sql(query, conn, params=params if params else None)
-    return df.reset_index(drop=True)
 
 
 def update_db(
@@ -122,30 +100,3 @@ def extract_properties_from_geojson(
             continue
 
     return geo_data_parsed
-
-
-def get_gdf_for_map(
-    date_min: str,
-    date_max: str,
-    min_accuracy: float = 100.0,
-    db_filename: str = DB_FILE,
-) -> pd.DataFrame:
-    """Return GPS points for the DB-backed /coordinates API.
-
-    Only moving points (speed > 0) with horizontal_accuracy <= min_accuracy
-    in the given timestamp range.
-
-    Returns:
-        DataFrame with columns lon, lat, timestamp, accuracy, speed.
-    """
-    with sqlite3.connect(db_filename) as conn:
-        query = f"""
-            SELECT lon, lat, timestamp, horizontal_accuracy AS accuracy, speed
-            FROM {DB_NAME}
-            WHERE timestamp >= ? AND timestamp <= ?
-            AND speed > 0
-            AND horizontal_accuracy <= ?
-            ORDER BY timestamp ASC
-        """
-        df = pd.read_sql(query, conn, params=[date_min, date_max, min_accuracy])
-    return df.reset_index(drop=True)

@@ -122,7 +122,7 @@ incognita/
 │   ├── data_api.py             # GPS data receiver server (port 5003)
 │   ├── database.py             # SQLite database operations
 │   ├── geo_distance.py         # Great-circle (haversine) distance
-│   ├── gps_point_series.py     # GPS point series: segment speed, trip split, stationary groups
+│   ├── gps_point_series.py     # GPS point series: segment speed and distance
 │   ├── gps.py                  # GPS data API + Deck.gl map rendering
 │   ├── gps_trips_renderer.py   # GPS trip extraction + map generation from incognita_raw_data
 │   ├── flights.py              # Flight data processing
