@@ -19,7 +19,7 @@ uv sync
 service_name=$(uv run config --project-name)
 prefix="projects_${service_name}_"
 data_api_service="${prefix}data-api"
-dashboard_service="${prefix}dashboard"
+app_service="projects_${service_name}"
 backup_scheduler_service="${prefix}data-backup-scheduler"
 data_api_port=$(uv run config --data-api-port)
 dashboard_port=$(uv run config --dashboard-port)
@@ -35,12 +35,12 @@ echo "📋 Configuration:"
 
 echo "Copying service file to systemd directory"
 sudo cp install/${data_api_service}.service  /lib/systemd/system/${data_api_service}.service
-sudo cp install/${dashboard_service}.service /lib/systemd/system/${dashboard_service}.service
+sudo cp install/${app_service}.service /lib/systemd/system/${app_service}.service
 sudo cp install/${backup_scheduler_service}.service /lib/systemd/system/${backup_scheduler_service}.service
 
 echo "Setting permissions for the service file"
 sudo chmod 644 /lib/systemd/system/${data_api_service}.service
-sudo chmod 644 /lib/systemd/system/${dashboard_service}.service
+sudo chmod 644 /lib/systemd/system/${app_service}.service
 sudo chmod 644 /lib/systemd/system/${backup_scheduler_service}.service
 
 echo "Reloading systemd daemon"
@@ -49,17 +49,17 @@ sudo systemctl daemon-reexec
 
 echo "Enabling services"
 sudo systemctl enable ${data_api_service}.service
-sudo systemctl enable ${dashboard_service}.service
+sudo systemctl enable ${app_service}.service
 sudo systemctl enable ${backup_scheduler_service}.service
 
 echo "Restarting services"
 sudo systemctl restart ${data_api_service}.service
-sudo systemctl restart ${dashboard_service}.service
+sudo systemctl restart ${app_service}.service
 sudo systemctl restart ${backup_scheduler_service}.service
 
 echo "Checking status of services"
 sudo systemctl status ${data_api_service}.service --no-pager
-sudo systemctl status ${dashboard_service}.service --no-pager
+sudo systemctl status ${app_service}.service --no-pager
 sudo systemctl status ${backup_scheduler_service}.service --no-pager
 
 
