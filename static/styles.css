@@ -124,24 +124,6 @@ nav a.active {
     margin-bottom: var(--space-xl);
 }
 
-.index-hero__nav {
-    display: flex;
-    justify-content: center;
-    gap: var(--space-lg);
-    flex-wrap: wrap;
-}
-
-.index-hero__link {
-    font-size: 17px;
-    font-weight: 500;
-    color: var(--color-accent);
-    text-decoration: none;
-}
-
-.index-hero__link:hover {
-    text-decoration: underline;
-}
-
 /* Flights page */
 /* Shared map-page layout: full viewport below nav, map is the star */
 .map-page {
