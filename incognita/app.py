@@ -27,6 +27,7 @@ from incognita.flights import (
 )
 from incognita.gps_trips_renderer import (
     get_latest_location_snapshot,
+    get_trip_points_for_date_range,
     get_trips_for_date_range,
     render_trips_to_file,
 )
@@ -41,6 +42,8 @@ from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX, google_sheets_documen
 from incognita.values import MAPBOX_API_KEY
 
 GPS_DEFAULT_DAYS_BACK = 30
+# Date ranges this short (inclusive) render as an animated comet-trace instead of a static map.
+GPS_ANIMATE_MAX_DAYS = 7
 DATE_FMT = "%Y-%m-%d"
 FLIGHTS_TABLE_DATE_FMT = "%Y.%m.%d"
 LIVE_STALENESS_GREEN_MINUTES = 5
@@ -145,21 +148,44 @@ def gps():
     end_dt = datetime.strptime(end_date, DATE_FMT).replace(
         hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc
     )
-    paths, stats = get_trips_for_date_range(start_dt, end_dt)
-    if paths is not None:
-        render_trips_to_file(paths, Path(GPS_MAP_FILENAME), default_location)
-    map_path = Path(GPS_MAP_FILENAME)
-    file_size_mb = map_path.stat().st_size / BYTES_PER_MB if map_path.exists() else 0.0
     day_count = (datetime.strptime(end_date, DATE_FMT) - datetime.strptime(start_date, DATE_FMT)).days + 1
-    logger.debug("[/gps] done start_date=%s end_date=%s", start_date, end_date)
+
+    # Short ranges animate a comet-trace in-page (deck.gl); longer ranges render a static map.
+    animated = False
+    day_paths: list[list[list[float]]] | None = None
+    track_points = 0
+    trips_count = 0
+    file_size_mb = 0.0
+
+    if day_count <= GPS_ANIMATE_MAX_DAYS:
+        trip_points = get_trip_points_for_date_range(start_dt, end_dt)
+        if trip_points:
+            animated = True
+            day_paths = trip_points
+            track_points = sum(len(p) for p in trip_points)
+            trips_count = len(trip_points)
+
+    if not animated:
+        paths, stats = get_trips_for_date_range(start_dt, end_dt)
+        if paths is not None:
+            render_trips_to_file(paths, Path(GPS_MAP_FILENAME), default_location)
+        map_path = Path(GPS_MAP_FILENAME)
+        file_size_mb = map_path.stat().st_size / BYTES_PER_MB if map_path.exists() else 0.0
+        track_points = stats.track_points
+        trips_count = stats.trips_count
+
+    logger.debug("[/gps] done start_date=%s end_date=%s animated=%s", start_date, end_date, animated)
     return render_template(
         "gps.html",
         start_date=start_date,
         end_date=end_date,
         map_filename=GPS_MAP_FILENAME,
+        animated=animated,
+        day_paths=day_paths,
+        mapbox_api_key=MAPBOX_API_KEY,
         day_count=day_count,
-        track_points=stats.track_points,
-        trips_count=stats.trips_count,
+        track_points=track_points,
+        trips_count=trips_count,
         file_size_mb=file_size_mb,
     )
 

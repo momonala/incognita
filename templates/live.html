@@ -10,6 +10,7 @@
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.js"></script>
     <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
     <script src="https://unpkg.com/@deck.gl/geo-layers@^9.0.0/dist.min.js"></script>
+    <script src="{{ url_for('static', filename='trips_trace.js') }}"></script>
 </head>
 <body>
     {% include 'navbar.html' %}
@@ -85,37 +86,11 @@
         })
         .catch(() => {});
 
-    // Remap raw GPS timestamps to be continuous — strips idle gaps between segments.
-    function buildTripsData(dayPaths) {
-        let cursor = 0;
-        return dayPaths.map(path => {
-            const rawTs = path.map(p => p[2]);
-            const offset = cursor - rawTs[0];
-            cursor += rawTs[rawTs.length - 1] - rawTs[0];
-            return { path: path.map(p => [p[0], p[1]]), timestamps: rawTs.map(ts => ts + offset) };
-        });
-    }
+    let tripsData  = TripsTrace.buildTripsData({{ day_paths | tojson }});
+    let daySpanSec = TripsTrace.spanSeconds(tripsData);
+    let ghostLayer = TripsTrace.makeGhostLayer(tripsData);
 
-    let tripsData  = buildTripsData({{ day_paths | tojson }});
-    let daySpanSec = tripsData.reduce((s, t) => s + (t.timestamps.at(-1) - t.timestamps[0]), 0);
-    let ghostLayer = makeGhostLayer();
-
-    function makeGhostLayer() {
-        return new deck.PathLayer({
-            id: 'ghost-path', data: tripsData, getPath: d => d.path,
-            getColor: [255, 111, 0, 50], getWidth: 2,
-            widthUnits: 'pixels', rounded: true, pickable: false,
-        });
-    }
-
-    function makeTripsLayer(currentTime) {
-        return new deck.TripsLayer({
-            id: 'trips-trace', data: tripsData,
-            getPath: d => d.path, getTimestamps: d => d.timestamps,
-            getColor: ORANGE, currentTime,
-            trailLength: TRAIL_LENGTH_S, widthMinPixels: 3, rounded: true, pickable: false,
-        });
-    }
+    const makeTripsLayer = currentTime => TripsTrace.makeTripsLayer(tripsData, currentTime, TRAIL_LENGTH_S);
 
     function makePulseLayers(elapsed) {
         const t = 0.5 + 0.5 * Math.sin(2 * Math.PI * PULSE_FREQ_HZ * elapsed);
@@ -202,9 +177,9 @@
                 LON           = data.lon;
                 FIX_TIME      = new Date(data.last_updated_iso);
                 if (data.last_heartbeat_iso) HEARTBEAT_TIME = new Date(data.last_heartbeat_iso);
-                tripsData      = buildTripsData(data.day_paths);
-                daySpanSec     = tripsData.reduce((s, t) => s + (t.timestamps.at(-1) - t.timestamps[0]), 0);
-                ghostLayer     = makeGhostLayer();
+                tripsData      = TripsTrace.buildTripsData(data.day_paths);
+                daySpanSec     = TripsTrace.spanSeconds(tripsData);
+                ghostLayer     = TripsTrace.makeGhostLayer(tripsData);
                 flashOverlay();
             })
             .catch(() => {});

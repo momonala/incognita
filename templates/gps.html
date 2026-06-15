@@ -10,6 +10,13 @@
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    {% if animated %}
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.js"></script>
+    <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
+    <script src="https://unpkg.com/@deck.gl/geo-layers@^9.0.0/dist.min.js"></script>
+    <script src="{{ url_for('static', filename='trips_trace.js') }}"></script>
+    {% endif %}
 </head>
 
 <body>
@@ -35,9 +42,66 @@
         </header>
 
         <section class="gps-map map-page__map" aria-label="GPS track map">
+            {% if animated %}
+            <div id="gps-deck-container"></div>
+            {% else %}
             <iframe src="{{ map_filename }}" title="GPS track map" loading="lazy"></iframe>
+            {% endif %}
         </section>
     </main>
+
+    {% if animated %}
+    <script>
+(function () {
+    const MAPBOX_TOKEN = {{ mapbox_api_key | tojson }};
+    const container = document.getElementById('gps-deck-container');
+    if (!container || !MAPBOX_TOKEN) return;
+
+    const dayPaths   = {{ day_paths | tojson }};
+    const tripsData  = TripsTrace.buildTripsData(dayPaths);
+    const daySpanSec = TripsTrace.spanSeconds(tripsData);
+    const ghostLayer = TripsTrace.makeGhostLayer(tripsData);
+
+    const LOOP_DURATION_S = TripsTrace.DEFAULT_LOOP_DURATION_S;
+    const TRAIL_LENGTH_S  = TripsTrace.DEFAULT_TRAIL_LENGTH_S;
+
+    // Fit the initial view to the full extent of the selected range.
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+    for (const path of dayPaths) for (const p of path) {
+        if (p[0] < minLng) minLng = p[0];
+        if (p[0] > maxLng) maxLng = p[0];
+        if (p[1] < minLat) minLat = p[1];
+        if (p[1] > maxLat) maxLat = p[1];
+    }
+    let viewState = { longitude: (minLng + maxLng) / 2, latitude: (minLat + maxLat) / 2, zoom: 11, bearing: 0, pitch: 0 };
+    try {
+        const rect = container.getBoundingClientRect();
+        const vp = new deck.WebMercatorViewport({ width: rect.width || 800, height: rect.height || 600 });
+        const fit = vp.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 48 });
+        viewState = { longitude: fit.longitude, latitude: fit.latitude, zoom: Math.min(fit.zoom, 16), bearing: 0, pitch: 0 };
+    } catch (e) { /* fall back to bbox center */ }
+
+    const deckInstance = new deck.DeckGL({
+        container,
+        mapboxApiAccessToken: MAPBOX_TOKEN,
+        mapStyle: 'mapbox://styles/mapbox/satellite-streets-v12',
+        mapOptions: { projection: 'mercator' },
+        initialViewState: viewState,
+        controller: true,
+        layers: [ghostLayer, TripsTrace.makeTripsLayer(tripsData, 0, TRAIL_LENGTH_S)],
+    });
+
+    const startTime = performance.now() / 1000;
+    function animate() {
+        const elapsed = performance.now() / 1000 - startTime;
+        const currentTime = daySpanSec > 0 ? (elapsed % LOOP_DURATION_S) / LOOP_DURATION_S * daySpanSec : 0;
+        deckInstance.setProps({ layers: [ghostLayer, TripsTrace.makeTripsLayer(tripsData, currentTime, TRAIL_LENGTH_S)] });
+        requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+})();
+    </script>
+    {% endif %}
 
     <script>
         $(function () {

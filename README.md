@@ -44,7 +44,7 @@ flowchart LR
 ## Features
 
 - **GPS Tracking**: Receive and store location data from Overland app
-- **Interactive Maps**: Visualize GPS tracks with PyDeck/Deck.gl
+- **Interactive Maps**: Visualize GPS tracks with PyDeck/Deck.gl; date ranges of one week or less play an animated comet-trace of the path (the same effect as the Live page), longer ranges show a static satellite map
 - **Live Location**: Real-time map showing most recent GPS fix with animated day-path replay; staleness dot uses the fresher of the last GPS fix or last heartbeat, so the indicator stays green while stationary
 - **Flight Tracking**: Analyze flight history with statistics and visualizations
 - **Countries Visited**: Track and visualize countries visited with passport-style view
@@ -142,7 +142,8 @@ incognita/
 │   ├── flights.html
 │   └── passport.html
 ├── static/                     # Static assets
-│   ├── app.js
+│   ├── trips_trace.js          # Shared deck.gl comet-trace animation (live + gps pages)
+│   ├── table_utils.js
 │   └── styles.css
 ├── data/
 │   └── geo_data.db            # SQLite database
@@ -168,7 +169,7 @@ incognita/
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | Home page |
-| `/gps` | GET/POST | GPS tracking map (date range selection) |
+| `/gps` | GET/POST | GPS tracking map (date range selection); ranges ≤7 days render an animated comet-trace, longer ranges a static map |
 | `/flights` | GET | Flight history dashboard |
 | `/passport` | GET | Countries visited visualization |
 | `/live` | GET | Live location map with animated day-path replay |

@@ -439,6 +439,11 @@ tfoot input {
     /* inherits from .map-page__map */
 }
 
+#gps-deck-container {
+    position: absolute;
+    inset: 0;
+}
+
 .gps-toolbar__form {
     display: flex;
     flex-wrap: wrap;
