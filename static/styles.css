@@ -1,5 +1,7 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
 :root {
-    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --color-bg: #fbfbfd;
     --color-surface: #ffffff;
     --color-text: #1d1d1f;
@@ -904,86 +906,68 @@ tfoot input {
     display: flex;
     flex-direction: column;
     gap: var(--space-lg);
-    max-width: 1400px;
     width: 100%;
     box-sizing: border-box;
-    align-self: center;
 }
 
 .health-chart-card {
     background: var(--color-surface);
+    border: 1px solid var(--color-border-light);
     border-radius: 12px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
-    padding: var(--space-lg);
+    padding: var(--space-md) var(--space-lg) var(--space-sm);
 }
 
-#healthChart {
+.hchart__head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-xs);
+}
+
+.hchart__title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+}
+
+.hchart__range {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--color-text-secondary);
+}
+
+.hchart__plot {
+    position: relative;
     width: 100%;
-    height: 320px;
+    min-height: 340px;
 }
 
 .health-table-wrap {
     overflow-x: auto;
 }
 
-.health-selection-stats {
-    background: var(--color-surface);
-    border-radius: 12px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
-    padding: var(--space-md) var(--space-lg);
+/* Row-count dropdown: left-align with the controls/chart instead of floating. */
+.health-page .dataTables_length {
+    float: none;
+    text-align: left;
+    margin: 0 0 var(--space-sm);
 }
 
-.health-selection-stats__label {
-    font-size: 12px;
+.health-page .dataTables_length label {
+    font-size: 13px;
     color: var(--color-text-secondary);
-    margin-bottom: var(--space-sm);
-    letter-spacing: 0.02em;
 }
 
-.health-selection-stats__cards {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-md);
-}
-
-.health-sel-card {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    padding: var(--space-sm) var(--space-md);
-    background: var(--color-bg);
-    border-radius: var(--radius);
-    border: 1px solid var(--color-border-light);
-    min-width: 160px;
-}
-
-.health-sel-card--active {
-    border-color: rgba(0, 113, 227, 0.35);
-    background: rgba(0, 113, 227, 0.05);
-}
-
-.health-sel-card__icon {
-    font-size: 18px;
-    line-height: 1;
-}
-
-.health-sel-card__label {
-    font-size: 12px;
-    color: var(--color-text-secondary);
-    flex: 1;
-}
-
-.health-sel-card__value {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--color-text);
-    letter-spacing: -0.02em;
-}
-
-.health-sel-card__days {
-    font-size: 11px;
-    color: var(--color-text-secondary);
-    margin-left: var(--space-xs);
+/* On narrow screens the control groups wrap to their own lines; drop the
+   divider + indent so every row starts at the same left edge as the chart. */
+@media (max-width: 640px) {
+    .health-controls__group + .health-controls__group {
+        padding-left: 0;
+        border-left: none;
+    }
 }
 
 .health-table-filters {

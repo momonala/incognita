@@ -10,7 +10,7 @@
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.10.25/js/jquery.dataTables.min.js"></script>
     <script src="{{ url_for('static', filename='table_utils.js') }}"></script>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.49.1/dist/apexcharts.min.js"></script>
 </head>
 <body>
     {% include 'navbar.html' %}
@@ -70,12 +70,11 @@
 
         <div class="health-content">
             <section class="health-chart-card" aria-label="Chart">
-                <div id="healthChart"></div>
-            </section>
-
-            <section class="health-selection-stats" id="selectionStats" style="display:none;" aria-label="Selection summary">
-                <div class="health-selection-stats__label" id="selectionLabel"></div>
-                <div class="health-selection-stats__cards" id="selectionCards"></div>
+                <div class="hchart__head">
+                    <span class="hchart__title" id="chartTitle">Steps</span>
+                    <span class="hchart__range" id="chartRange">30D</span>
+                </div>
+                <div id="healthChart" class="hchart__plot"></div>
             </section>
 
             <section class="health-table-wrap" aria-label="Daily totals by metric">
@@ -106,13 +105,6 @@
     let currentRange  = 30;      // days; 0 = all
     let dateFrom = '';
     let dateTo   = '';
-
-    const METRIC_LABEL = {
-        step_count:      'Steps',
-        distance:        'Distance',
-        active_energy:   'Calories',
-        flights_climbed: 'Flights',
-    };
 
     // ── DataTable ────────────────────────────────────────────────────────────
     // 5 columns: Day, Steps, Distance, Calories, Flights
@@ -165,63 +157,171 @@
     });
 
 
-    // ── Plotly helpers ───────────────────────────────────────────────────────
-    const ACCENT = '#0071e3';
-    const PLOTLY_FONT = {
-        family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-        size: 13,
-        color: '#1d1d1f',
+    // ── Multi-metric line chart (ApexCharts) ─────────────────────────────────
+    // All four metrics share one chart. Each gets its own right-side y-axis
+    // (units differ by orders of magnitude), so the lines compare *shape*, not
+    // magnitude. The active metric is brought forward at full intensity with a
+    // gradient area fill; the others dim to faint lines.
+    //
+    // One electric colour per metric.
+    const METRICS = [
+        { key: 'step_count',      name: 'Steps',    unit: 'steps',  color: '#2b8fff', decimals: 0 },
+        { key: 'distance',        name: 'Distance', unit: 'km',     color: '#00e0c6', decimals: 1 },
+        { key: 'active_energy',   name: 'Calories', unit: 'kcal',   color: '#ff3d8b', decimals: 0 },
+        { key: 'flights_climbed', name: 'Flights',  unit: 'floors', color: '#a259ff', decimals: 0 },
+    ];
+
+    // Chart chrome (grid, axis labels) reads the same design tokens as the rest
+    // of the page, so a theme change stays a one-line edit in styles.css.
+    const cssToken = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const COLOR_GRID = cssToken('--color-border-light');
+    const COLOR_AXIS = cssToken('--color-text-secondary');
+
+    // Dim inactive traces by dropping their stroke colour to a low alpha; the
+    // active metric keeps its full-intensity neon.
+    const DIM_ALPHA = 0.22;
+    const hexToRgba = (hex, a) => {
+        const n = parseInt(hex.slice(1), 16);
+        return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
     };
-    const PLOTLY_LAYOUT_BASE = {
-        paper_bgcolor: 'transparent',
-        plot_bgcolor:  'transparent',
-        margin: { t: 16, r: 20, b: 48, l: 56 },
-        font: PLOTLY_FONT,
-        xaxis: {
-            gridcolor: '#e8e8ed',
-            zeroline: false,
-            tickfont: PLOTLY_FONT,
-        },
-        yaxis: {
-            gridcolor: '#e8e8ed',
-            zeroline: false,
-            tickfont: PLOTLY_FONT,
-        },
-    };
+    const traceColors = key => METRICS.map(m => m.key === key ? m.color : hexToRgba(m.color, DIM_ALPHA));
 
-    function renderChart(chartData, unit, agg) {
-        const isLine = agg === 'mean';
-        const trace = isLine ? {
-            x:    chartData.map(d => d.date),
-            y:    chartData.map(d => d.value),
-            type: 'scatter',
-            mode: 'lines+markers',
-            line:   { color: ACCENT, width: 2 },
-            marker: { color: ACCENT, size: 4 },
-            hovertemplate: '%{y:.1f} ' + unit + '<extra></extra>',
-        } : {
-            x:    chartData.map(d => d.date),
-            y:    chartData.map(d => d.value),
-            type: 'bar',
-            marker: { color: ACCENT, opacity: 0.85 },
-            hovertemplate: '%{y:,.0f} ' + unit + '<extra></extra>',
-        };
+    let chartRows = [];   // ascending-by-day rows from /health/table, cached for redraws
+    let chart = null;
 
-        const layout = Object.assign({}, PLOTLY_LAYOUT_BASE, {
-            yaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.yaxis, { title: { text: unit, font: { size: 12 } } }),
-        });
+    const fmtNum = (v, d) => v == null ? '' : (+v).toLocaleString(undefined, { maximumFractionDigits: d });
+    const activeIndex = key => Math.max(0, METRICS.findIndex(m => m.key === key));
 
-        Plotly.react('healthChart', [trace], layout, { responsive: true, displayModeBar: false });
+    // On mobile only the active metric is drawn; the others are sent as empty
+    // series so the single trace gets the full width.
+    function buildSeries(rows, activeKey) {
+        const mobile = isMobile();
+        return METRICS.map(m => ({
+            name: m.name,
+            data: (mobile && m.key !== activeKey)
+                ? []
+                : rows.map(r => [Date.parse(r.day), r[m.key] === '' || r[m.key] == null ? null : +r[m.key]]),
+        }));
     }
 
-    function renderEmptyChart(message) {
-        Plotly.react('healthChart', [], Object.assign({}, PLOTLY_LAYOUT_BASE, {
-            annotations: [{
-                text: message, showarrow: false,
-                font: { size: 14, color: '#6e6e73' },
-                xref: 'paper', yref: 'paper', x: 0.5, y: 0.5,
-            }],
-        }), { responsive: true, displayModeBar: false });
+    // Active trace pops with a thick full-intensity line and a gradient fill;
+    // the rest stay as thin, unfilled lines.
+    const strokeWidths = key => METRICS.map(m => m.key === key ? 3 : 1.5);
+    const fillOpacities = key => METRICS.map(m => m.key === key ? 0.85 : 0);
+
+    const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
+
+    // One y-axis per metric. The active metric's axis sits on the LEFT; the
+    // other three on the right. On phones there's no room for four scales, so
+    // only the active axis is shown — the other traces still draw against their
+    // (hidden) axes and remain in the tooltip.
+    function buildYAxis(activeKey) {
+        const mobile = isMobile();
+        return METRICS.map(m => {
+            const active = m.key === activeKey;
+            const visible = active || !mobile;
+            return {
+                seriesName: m.name,
+                opposite: !active,
+                show: visible,
+                showAlways: visible,
+                tickAmount: 4,
+                min: 0,
+                forceNiceScale: true,
+                axisBorder: { show: false },
+                axisTicks: { show: false },
+                title: visible ? { text: m.unit, style: { color: m.color, fontSize: '11px', fontWeight: 400 } } : undefined,
+                labels: {
+                    style: { colors: m.color, fontSize: '11px' },
+                    formatter: v => fmtNum(v, m.decimals),
+                },
+            };
+        });
+    }
+
+    function updateChartTitle(activeKey) {
+        const m = METRICS[activeIndex(activeKey)];
+        const el = document.getElementById('chartTitle');
+        el.textContent = m.name;
+        el.style.color = m.color;
+    }
+
+    function buildChartOptions(activeKey) {
+        return {
+            series: buildSeries(chartRows, activeKey),
+            chart: {
+                type: 'area',
+                height: 340,
+                background: 'transparent',
+                fontFamily: 'inherit',
+                foreColor: COLOR_AXIS,
+                toolbar: { show: false },
+                zoom: { enabled: true, type: 'x', autoScaleYaxis: true },
+                animations: { enabled: true, easing: 'easeinout', speed: 450 },
+            },
+            theme: { mode: 'light' },
+            colors: traceColors(activeKey),
+            stroke: { curve: 'smooth', width: strokeWidths(activeKey), lineCap: 'round' },
+            fill: {
+                type: 'gradient',
+                gradient: {
+                    shade: 'light',
+                    type: 'vertical',
+                    shadeIntensity: 0,
+                    opacityFrom: fillOpacities(activeKey),
+                    opacityTo: 0,
+                    stops: [0, 100],
+                },
+            },
+            dataLabels: { enabled: false },
+            grid: {
+                borderColor: COLOR_GRID,
+                xaxis: { lines: { show: true } },
+                yaxis: { lines: { show: false } },
+                padding: { left: 4, right: 4 },
+            },
+            xaxis: {
+                type: 'datetime',
+                axisBorder: { show: false },
+                axisTicks: { show: false },
+                tooltip: { enabled: false },
+                labels: { datetimeUTC: false, style: { colors: COLOR_AXIS, fontSize: '11px' } },
+            },
+            yaxis: buildYAxis(activeKey),
+            legend: { show: false },
+            markers: { size: 0, hover: { size: 4 } },
+            tooltip: {
+                shared: true,
+                intersect: false,
+                theme: 'light',
+                x: { format: 'ddd, MMM d' },
+                y: { formatter: (v, { seriesIndex }) => v == null ? '—' : `${fmtNum(v, METRICS[seriesIndex].decimals)} ${METRICS[seriesIndex].unit}` },
+            },
+        };
+    }
+
+    function renderChart(rows, activeKey) {
+        chartRows = rows;
+        updateChartTitle(activeKey);
+        if (!chart) {
+            chart = new ApexCharts(document.getElementById('healthChart'), buildChartOptions(activeKey));
+            chart.render();
+            return;
+        }
+        chart.updateSeries(buildSeries(rows, activeKey), false);
+        highlightTrace(activeKey);
+    }
+
+    // Cheap restyle when only the active metric changes (no data refetch):
+    // emphasise its line + fill, and move its y-axis to the left.
+    function highlightTrace(activeKey) {
+        updateChartTitle(activeKey);
+        chart.updateOptions({
+            colors: traceColors(activeKey),
+            stroke: { width: strokeWidths(activeKey) },
+            fill: { gradient: { opacityFrom: fillOpacities(activeKey) } },
+            yaxis: buildYAxis(activeKey),
+        }, false, false);
     }
 
     // ── Stats cards ──────────────────────────────────────────────────────────
@@ -244,7 +344,9 @@
         return v === '' || v == null ? '—' : (+v).toLocaleString(undefined, { maximumFractionDigits: decimals });
     }
 
-    function loadTable() {
+    // The /health/table endpoint already returns every metric per day, so it
+    // feeds both the DataTable and the multi-trace chart from a single fetch.
+    function loadTableAndChart() {
         const params = new URLSearchParams();
         if (dateFrom) params.set('from', dateFrom);
         if (dateTo)   params.set('to',   dateTo);
@@ -261,8 +363,12 @@
                     r.flights_climbed    !== '' ? +r.flights_climbed     : '',
                 ]));
                 dt.draw();
+
+                // Chart wants ascending days; the table endpoint returns them descending.
+                chartRows = rows.slice().sort((a, b) => a.day.localeCompare(b.day));
+                renderChart(chartRows, currentMetric);
             })
-            .catch(() => { dt.clear().draw(); });
+            .catch(() => { dt.clear().draw(); chartRows = []; renderChart([], currentMetric); });
     }
 
     // ── Date range helpers ───────────────────────────────────────────────────
@@ -281,8 +387,8 @@
         document.getElementById('dateTo').value   = dateTo;
     }
 
-    // ── Data fetch ───────────────────────────────────────────────────────────
-    function loadData() {
+    // ── Stats cards (active metric only, via /health/data) ───────────────────
+    function loadStats() {
         const params = new URLSearchParams({ metric: currentMetric });
         if (dateFrom) params.set('from', dateFrom);
         if (dateTo)   params.set('to',   dateTo);
@@ -291,18 +397,15 @@
             .then(r => r.json())
             .then(data => {
                 if (!data.chart || data.chart.length === 0) {
-                    renderEmptyChart('No data for this selection.');
                     document.getElementById('statCount').textContent = '0';
                     ['statMain', 'statMin', 'statMax', 'statAvg', 'statDays'].forEach(id => {
                         document.getElementById(id).textContent = '—';
                     });
-                    dt.clear().draw();
                     return;
                 }
-                renderChart(data.chart, data.unit, data.stats.agg);
                 updateStats(data.stats, data.chart);
             })
-            .catch(() => renderEmptyChart('Failed to load data.'));
+            .catch(() => {});
     }
 
     // ── Event wiring ─────────────────────────────────────────────────────────
@@ -311,7 +414,8 @@
             document.querySelectorAll('[data-metric]').forEach(b => b.classList.remove('ctrl-btn--active'));
             this.classList.add('ctrl-btn--active');
             currentMetric = this.dataset.metric;
-            loadData();  // chart + stats only; table is metric-independent
+            if (chart) renderChart(chartRows, currentMetric);  // restyle (+ swap trace on mobile), no refetch
+            loadStats();
         });
     });
 
@@ -321,9 +425,10 @@
             this.classList.add('ctrl-btn--active');
             currentRange = parseInt(this.dataset.range, 10);
             document.getElementById('customDates').style.display = 'none';
+            document.getElementById('chartRange').textContent = currentRange === 0 ? 'All' : currentRange + 'D';
             setDateRange(currentRange);
-            loadData();
-            loadTable();
+            loadStats();
+            loadTableAndChart();
         });
     });
 
@@ -333,65 +438,19 @@
             dateTo   = document.getElementById('dateTo').value;
             document.querySelectorAll('[data-range]').forEach(b => b.classList.remove('ctrl-btn--active'));
             document.getElementById('customDates').style.display = 'flex';
-            loadData();
-            loadTable();
+            document.getElementById('chartRange').textContent = 'Custom';
+            loadStats();
+            loadTableAndChart();
         });
     });
 
-    // ── Selection summary (plotly zoom / relayout) ───────────────────────────
-    const METRIC_DISPLAY = {
-        step_count:    { label: 'Steps',    icon: '👟' },
-        distance:      { label: 'Distance', icon: '📍' },
-        active_energy: { label: 'Calories', icon: '🔥' },
-        flights_climbed: { label: 'Flights', icon: '🏔️' },
-    };
-
-    function showSelectionStats(from, to) {
-        const params = new URLSearchParams();
-        if (from) params.set('from', from.slice(0, 10));
-        if (to)   params.set('to',   to.slice(0, 10));
-
-        fetch('/health/summary?' + params)
-            .then(r => r.json())
-            .then(data => {
-                const panel  = document.getElementById('selectionStats');
-                const label  = document.getElementById('selectionLabel');
-                const cards  = document.getElementById('selectionCards');
-
-                label.textContent = `${data.from || '—'} → ${data.to || '—'}`;
-                cards.innerHTML = '';
-
-                Object.entries(data.metrics).forEach(([key, m]) => {
-                    if (!m) return;
-                    const info = METRIC_DISPLAY[key] || { label: key, icon: '' };
-                    const fmt  = m.agg === 'sum'
-                        ? m.value.toLocaleString(undefined, { maximumFractionDigits: 1 })
-                        : m.value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-                    const card = document.createElement('div');
-                    card.className = 'health-sel-card' + (key === currentMetric ? ' health-sel-card--active' : '');
-                    card.innerHTML = `<span class="health-sel-card__icon">${info.icon}</span>`
-                        + `<span class="health-sel-card__label">${info.label}</span>`
-                        + `<span class="health-sel-card__value">${fmt} ${m.unit}</span>`
-                        + `<span class="health-sel-card__days">${m.days}d</span>`;
-                    cards.appendChild(card);
-                });
-
-                panel.style.display = 'block';
-            })
-            .catch(() => {});
-    }
-
-    function hideSelectionStats() {
-        document.getElementById('selectionStats').style.display = 'none';
-    }
-
-    document.getElementById('healthChart').on('plotly_relayout', function (eventData) {
-        const x0 = eventData['xaxis.range[0]'];
-        const x1 = eventData['xaxis.range[1]'];
-        if (x0 && x1) {
-            showSelectionStats(x0, x1);
-        } else if (eventData['xaxis.autorange']) {
-            hideSelectionStats();
+    // Rebuild the axes when crossing the mobile breakpoint (orientation / resize).
+    let wasMobile = isMobile();
+    window.addEventListener('resize', () => {
+        const now = isMobile();
+        if (now !== wasMobile) {
+            wasMobile = now;
+            if (chart) renderChart(chartRows, currentMetric);  // rebuild traces + axes for the new layout
         }
     });
 
