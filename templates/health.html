@@ -396,9 +396,8 @@
     });
 
     // ── Init ─────────────────────────────────────────────────────────────────
-    setDateRange(currentRange);
-    loadData();
-    loadTable();
+    // Trigger the 30-day button click to properly initialize all state
+    document.querySelector('[data-range="30"]').click();
 })();
 </script>
 </body>
