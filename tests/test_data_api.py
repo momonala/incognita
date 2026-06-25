@@ -142,3 +142,38 @@ def test_motion_stats_returns_daily_summary(monkeypatch):
 
     assert response.status_code == 200
     assert response.get_json() == sample
+
+
+def test_snooze_sets_window_and_mutes_alerts(monkeypatch):
+    """A valid /snooze call records a future window and suppresses alerts within it."""
+    import incognita.data_api as data_api
+
+    monkeypatch.setattr(data_api, "snooze_until", None)
+    monkeypatch.setattr(data_api, "_post_telegram", lambda text: 1)
+
+    with app.test_client() as client:
+        response = client.post("/snooze", json={"hours": 3})
+
+    assert response.status_code == 200
+    assert response.get_json()["status"] == "ok"
+    assert data_api.snooze_until is not None
+    assert data_api.alerts_muted() == f"snoozed until {data_api.snooze_until:%H:%M}"
+
+
+@pytest.mark.parametrize("hours", [0, 25, -1, "abc", None])
+def test_snooze_rejects_out_of_range(hours):
+    """/snooze only accepts integer hours in 1–24."""
+    with app.test_client() as client:
+        response = client.post("/snooze", json={"hours": hours})
+
+    assert response.status_code == 400
+
+
+def test_alerts_muted_during_quiet_hours():
+    """Overnight quiet hours mute alerts even without a snooze."""
+    from datetime import datetime
+
+    import incognita.data_api as data_api
+
+    assert data_api.alerts_muted(datetime(2025, 1, 1, 2, 0)) == "sleepy time"
+    assert data_api.alerts_muted(datetime(2025, 1, 1, 12, 0)) is None

@@ -31,6 +31,10 @@ app = Flask(__name__)
 overland_port = 5003
 last_heartbeat = datetime.now()
 
+# When set and in the future, the watchdog stays quiet. Set via POST /snooze when the
+# phone is intentionally offline so missing heartbeats don't trigger alerts.
+snooze_until: datetime | None = None
+
 DEFAULT_LOOKBACK_HOURS = 24
 TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -70,52 +74,65 @@ def log_payload_size(f):
     return decorated_function
 
 
-def send_telegram_alert(message: str):
-    """Send alert message with current backoff status. Deletes previous alert except for 'Heartbeat recovered'."""
-    global last_message_id
-    # if time between 11pm and 7am, don't send alerts
-    if datetime.now().hour < 7 or datetime.now().hour > 23:
-        logger.debug("🌙 Skipping alert because it's sleepy time!")
-        return
+def alerts_muted(now: datetime | None = None) -> str | None:
+    """Return a reason string if alerts should be suppressed right now, else None.
 
-    # If this is a heartbeat recovered message, reset last_message_id and do not delete anything
-    if "recovered" in message.lower():
-        with last_message_lock:
-            last_message_id = None
-        logger.debug("Heartbeat recovered message sent. Not deleting any previous message.")
-    else:
-        # Delete the previous message if it exists
-        with last_message_lock:
-            if last_message_id is not None:
-                delete_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteMessage"
-                payload = {"chat_id": TELEGRAM_CHAT_ID, "message_id": last_message_id}
-                try:
-                    response = requests.post(delete_url, json=payload, timeout=10)
-                    if response.json().get("ok"):
-                        logger.debug(f"🗑️ Deleted previous message {last_message_id}")
-                    else:
-                        logger.warning(
-                            f"Failed to delete previous message {last_message_id}: {response.json()}"
-                        )
-                except Exception as e:
-                    logger.error(f"Error deleting previous message {last_message_id}: {e}")
-                last_message_id = None
+    Covers two cases that both mean "don't bother me": an active snooze window, and
+    the hardcoded overnight quiet hours (11pm–7am).
+    """
+    now = now or datetime.now()
+    if snooze_until is not None and now < snooze_until:
+        return f"snoozed until {snooze_until:%H:%M}"
+    if now.hour < 7 or now.hour > 23:
+        return "sleepy time"
+    return None
 
+
+def _post_telegram(message: str) -> int | None:
+    """Send a Telegram message, returning its message_id (or None on failure)."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-
     try:
         response = requests.post(url, json=payload, timeout=10)
         response_data = response.json()
         if response_data.get("ok") and "result" in response_data:
-            message_id = response_data["result"]["message_id"]
-            with last_message_lock:
-                last_message_id = message_id
-            logger.debug(f"{message}. Telegram alert sent with ID: {message_id}")
-        else:
-            logger.error(f"Failed to send Telegram message: {response_data}")
+            return response_data["result"]["message_id"]
+        logger.error(f"Failed to send Telegram message: {response_data}")
     except Exception as e:
         logger.error(f"Failed to send Telegram message: {e}")
+    return None
+
+
+def send_telegram_alert(message: str):
+    """Send a watchdog alert, deleting the previous one so the chat shows a single live status.
+
+    Suppressed entirely while alerts are muted (snooze or quiet hours).
+    """
+    global last_message_id
+    if reason := alerts_muted():
+        logger.debug(f"🌙 Skipping alert ({reason})")
+        return
+
+    # Delete the previous alert so only the latest downtime status is visible.
+    with last_message_lock:
+        if last_message_id is not None:
+            delete_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteMessage"
+            payload = {"chat_id": TELEGRAM_CHAT_ID, "message_id": last_message_id}
+            try:
+                response = requests.post(delete_url, json=payload, timeout=10)
+                if response.json().get("ok"):
+                    logger.debug(f"🗑️ Deleted previous message {last_message_id}")
+                else:
+                    logger.warning(f"Failed to delete previous message {last_message_id}: {response.json()}")
+            except Exception as e:
+                logger.error(f"Error deleting previous message {last_message_id}: {e}")
+            last_message_id = None
+
+    message_id = _post_telegram(message)
+    if message_id is not None:
+        with last_message_lock:
+            last_message_id = message_id
+        logger.debug(f"{message}. Telegram alert sent with ID: {message_id}")
 
 
 @app.route("/", methods=["GET"])
@@ -145,6 +162,13 @@ def watchdog():
     while True:
         time.sleep(1)
         now = datetime.now()
+
+        # While snoozed, hold the backoff at the start so alerting resumes from 1m
+        # (not mid-schedule) once the snooze ends.
+        if snooze_until is not None and now < snooze_until:
+            next_alert = alert_schedule[0]
+            continue
+
         heartbeat_down_time = now - last_heartbeat
         downtime_sec = int(heartbeat_down_time.total_seconds())
         logger.debug(f"Downtime(s): {downtime_sec:<10} Next Alert(s): {next_alert:<10} {is_down=}")
@@ -159,12 +183,6 @@ def watchdog():
             next_alert = _get_next_alert(next_alert)
 
         elif downtime_sec < alert_schedule[0] and is_down:
-            message = (
-                f"💚 Heartbeat recovered!\n"
-                f"Downtime: {format_downtime(downtime_sec)}\n"
-                f"Last heartbeat: {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-            # send_telegram_alert(message)
             next_alert = alert_schedule[0]
             is_down = False
 
@@ -178,6 +196,24 @@ def heartbeat():
     except Exception as e:
         logger.warning(f"Failed to send heartbeat to dashboard: {e}")
     return jsonify({"status": "ok"}), 200
+
+
+@app.route("/snooze", methods=["POST"])
+def snooze():
+    """Mute downtime alerts for N hours (1–24). Used when the phone is intentionally offline."""
+    global snooze_until
+    body = request.get_json(silent=True) or {}
+    try:
+        hours = int(body.get("hours"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "hours must be an integer between 1 and 24"}), 400
+    if not 1 <= hours <= 24:
+        return jsonify({"error": "hours must be between 1 and 24"}), 400
+
+    snooze_until = datetime.now() + timedelta(hours=hours)
+    logger.info(f"😴 Alerts snoozed for {hours}h, until {snooze_until:%Y-%m-%d %H:%M:%S}")
+    _post_telegram(f"😴 Alerts snoozed for {hours}h, until {snooze_until:%H:%M}")
+    return jsonify({"status": "ok", "snooze_until": snooze_until.isoformat()}), 200
 
 
 def get_hour(ts):
