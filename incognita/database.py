@@ -38,6 +38,11 @@ def update_db(
         # Create new connection
         with sqlite3.connect(db_filename) as conn:
             df.to_sql(DB_NAME, conn, if_exists="append", index=False)
+
+    affected_dates = pd.to_datetime(df["timestamp"], utc=True).dt.strftime("%Y-%m-%d").unique().tolist()
+    from incognita.motion_stats import invalidate_motion_stats_cache
+
+    invalidate_motion_stats_cache(affected_dates, db_filename)
     logger.debug(
         "Updated db_filename=%s with geojson_filename=%s shape=%s", db_filename, geojson_filename, df.shape
     )

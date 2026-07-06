@@ -15,11 +15,17 @@ from flask import Flask, Response, jsonify, request
 from pydantic import ValidationError
 
 from incognita.config import DASHBOARD_PORT
-from incognita.data_models import DailyMotionStats, HealthDump, HealthKitBatch
+from incognita.data_models import (
+    DailyMotionStats,
+    HealthDump,
+    HealthDumpRange,
+    HealthKitBatch,
+    MotionStatsRange,
+)
 from incognita.database import update_db
 from incognita.gps_trips_renderer import get_trip_points_for_date_range
-from incognita.health_database import get_daily_health_dump, insert_health_batch
-from incognita.motion_stats import get_daily_motion_stats
+from incognita.health_database import get_daily_health_dump, get_health_dump_range, insert_health_batch
+from incognita.motion_stats import get_daily_motion_stats, get_motion_stats_range
 from incognita.observability import configure_logging
 from incognita.utils import get_ip_address
 from incognita.values import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
@@ -36,6 +42,7 @@ last_heartbeat = datetime.now()
 snooze_until: datetime | None = None
 
 DEFAULT_LOOKBACK_HOURS = 24
+MAX_STATS_LOOKBACK_DAYS = 366
 TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 # Global variable to store the last sent Telegram message ID
@@ -346,6 +353,22 @@ def ios_dump():
     return jsonify({"result": "ok", "inserted": inserted, "skipped": skipped})
 
 
+def _parse_lookback_days(raw: str | None, *, default: int = 7) -> tuple[int | None, tuple[dict, int] | None]:
+    """Parse and validate a lookback-days query param. Returns (days, error_response)."""
+    if raw is None:
+        return default, None
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        return None, ({"status": "error", "message": "days must be an integer between 1 and 366"}, 400)
+    if not 1 <= days <= MAX_STATS_LOOKBACK_DAYS:
+        return None, (
+            {"status": "error", "message": f"days must be between 1 and {MAX_STATS_LOOKBACK_DAYS}"},
+            400,
+        )
+    return days, None
+
+
 @app.route("/motion-stats", methods=["GET"])
 def motion_stats():
     """Return today's GPS motion summary from the location database.
@@ -377,6 +400,23 @@ def motion_stats():
     return jsonify(stats.model_dump(mode="json")), 200
 
 
+@app.route("/motion-stats-range", methods=["GET"])
+def motion_stats_range():
+    """Return daily GPS motion summaries for the last N calendar days ending today.
+
+    Query params:
+        days (int): Number of days to include, 1–366. Defaults to 7.
+    """
+    days, error = _parse_lookback_days(request.args.get("days"))
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    stats = [DailyMotionStats.model_validate(row) for row in get_motion_stats_range(days)]
+    payload = MotionStatsRange(days=days, stats=stats)
+    return jsonify(payload.model_dump(mode="json")), 200
+
+
 @app.route("/health-data", methods=["GET"])
 def health_data():
     """Return a daily health summary aggregated from the HealthKit database.
@@ -401,6 +441,35 @@ def health_data():
         recorded_at=datetime.now(),
     )
     return jsonify(dump.model_dump(mode="json")), 200
+
+
+@app.route("/health-data-range", methods=["GET"])
+def health_data_range():
+    """Return daily health summaries for the last N calendar days ending today.
+
+    Query params:
+        days (int): Number of days to include, 1–366. Defaults to 7.
+    """
+    days, error = _parse_lookback_days(request.args.get("days"))
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    health_rows = get_health_dump_range(days)
+    health = [
+        HealthDump(
+            date=row["date"],
+            steps=int(row["steps"]) if row["steps"] is not None else None,
+            kcals=row["kcals"],
+            km=row["km"],
+            flights_climbed=int(row["flights_climbed"]) if row["flights_climbed"] is not None else None,
+            weight=None,
+            recorded_at=datetime.now(),
+        )
+        for row in health_rows
+    ]
+    payload = HealthDumpRange(days=days, health=health)
+    return jsonify(payload.model_dump(mode="json")), 200
 
 
 @app.route("/coordinates", methods=["GET"])

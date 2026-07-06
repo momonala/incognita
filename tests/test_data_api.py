@@ -144,6 +144,75 @@ def test_motion_stats_returns_daily_summary(monkeypatch):
     assert response.get_json() == sample
 
 
+def test_motion_stats_range_returns_ordered_days(monkeypatch):
+    """Verify /motion-stats-range returns N daily stats oldest to newest."""
+    sample = {
+        "date": "2025-01-01",
+        "total_km": 1.0,
+        "max_speed_m_s": 1.0,
+        "avg_speed_m_s": 1.0,
+        "time_spent_seconds": 60.0,
+        "altitude_ascended_m": 0.0,
+        "altitude_descended_m": 0.0,
+        "motion_type": {
+            "automotive": {"distance_km": 0.0, "time_seconds": 0.0},
+            "cycling": {"distance_km": 0.0, "time_seconds": 0.0},
+            "running": {"distance_km": 0.0, "time_seconds": 0.0},
+            "stationary": {"distance_km": 0.0, "time_seconds": 0.0},
+            "unknown": {"distance_km": 0.0, "time_seconds": 0.0},
+            "walking": {"distance_km": 1.0, "time_seconds": 60.0},
+        },
+    }
+
+    def fake_range(days: int):
+        assert days == 3
+        return [
+            {**sample, "date": "2025-01-01"},
+            {**sample, "date": "2025-01-02", "total_km": 2.0},
+            {**sample, "date": "2025-01-03", "total_km": 3.0},
+        ]
+
+    monkeypatch.setattr("incognita.data_api.get_motion_stats_range", fake_range)
+
+    with app.test_client() as client:
+        response = client.get("/motion-stats-range?days=3")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["days"] == 3
+    assert [row["date"] for row in payload["stats"]] == ["2025-01-01", "2025-01-02", "2025-01-03"]
+    assert payload["stats"][-1]["total_km"] == 3.0
+
+
+@pytest.mark.parametrize("days", ["0", "367", "abc", "-1"])
+def test_motion_stats_range_rejects_invalid_days(days):
+    """/motion-stats-range only accepts integer days in 1–366."""
+    with app.test_client() as client:
+        response = client.get(f"/motion-stats-range?days={days}")
+
+    assert response.status_code == 400
+
+
+def test_health_data_range_returns_ordered_days(monkeypatch):
+    """Verify /health-data-range returns N daily health rows oldest to newest."""
+    monkeypatch.setattr(
+        "incognita.data_api.get_health_dump_range",
+        lambda days: [
+            {"date": "2025-01-01", "steps": 1000, "kcals": 10.0, "km": 1.0, "flights_climbed": 2},
+            {"date": "2025-01-02", "steps": 2000, "kcals": 20.0, "km": 2.0, "flights_climbed": 4},
+        ],
+    )
+
+    with app.test_client() as client:
+        response = client.get("/health-data-range?days=2")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["days"] == 2
+    assert [row["date"] for row in payload["health"]] == ["2025-01-01", "2025-01-02"]
+    assert payload["health"][1]["steps"] == 2000
+
+
 def test_snooze_sets_window_and_mutes_alerts(monkeypatch):
     """A valid /snooze call records a future window and suppresses alerts within it."""
     import incognita.data_api as data_api

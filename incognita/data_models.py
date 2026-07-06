@@ -189,3 +189,21 @@ class DailyMotionStats(BaseModel):
     altitude_ascended_m: float
     altitude_descended_m: float
     motion_type: dict[str, MotionCategoryStats]
+
+
+class MotionStatsRange(BaseModel):
+    """Multi-day motion stats returned by /motion-stats-range."""
+
+    model_config = _FROZEN
+
+    days: int
+    stats: list[DailyMotionStats]
+
+
+class HealthDumpRange(BaseModel):
+    """Multi-day health summaries returned by /health-data-range."""
+
+    model_config = _FROZEN
+
+    days: int
+    health: list[HealthDump]

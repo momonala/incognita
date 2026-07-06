@@ -1,6 +1,8 @@
 """Daily GPS motion statistics from the Overland SQLite database."""
 
+import json
 import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -11,6 +13,7 @@ from incognita.gps_geometry import add_speed_to_gdf
 MOTION_CATEGORIES = ("automotive", "cycling", "running", "stationary", "unknown", "walking")
 
 ALTITUDE_SAMPLE_EVERY_N = 60
+_MOTION_STATS_CACHE_TABLE = "daily_motion_stats_cache"
 
 _DAILY_POINTS_SQL = f"""
 SELECT lon, lat, timestamp, speed, altitude, motion
@@ -18,6 +21,8 @@ FROM {DB_NAME}
 WHERE timestamp >= ? AND timestamp <= ?
 ORDER BY timestamp ASC
 """
+
+_POINT_COLUMNS = ["lon", "lat", "timestamp", "speed", "altitude", "motion"]
 
 
 def get_daily_motion_stats(date: str, db_filename: str = DB_FILE) -> dict:
@@ -30,10 +35,117 @@ def get_daily_motion_stats(date: str, db_filename: str = DB_FILE) -> dict:
     return _aggregate_motion_stats(day_points, date)
 
 
-def _load_daily_points(date: str, db_filename: str) -> pd.DataFrame:
-    date_max = f"{date}T23:59:59Z"
+def get_motion_stats_range(days: int, db_filename: str = DB_FILE) -> list[dict]:
+    """Return daily motion stats for the last ``days`` calendar days ending today (oldest first).
+
+    Past calendar days are served from a SQLite cache; today is always recomputed.
+    """
+    if days < 1:
+        raise ValueError("days must be at least 1")
+
+    today = datetime.now().date()
+    today_str = today.strftime("%Y-%m-%d")
+    dates = [(today - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(days - 1, -1, -1)]
+
+    stats_by_date: dict[str, dict] = {}
+    to_compute: list[str] = []
+
+    for date in dates:
+        if date == today_str:
+            to_compute.append(date)
+            continue
+        cached = _read_motion_stats_cache(date, db_filename)
+        if cached is not None:
+            stats_by_date[date] = cached
+        else:
+            to_compute.append(date)
+
+    for date, stats in _compute_motion_stats_for_dates(to_compute, db_filename).items():
+        stats_by_date[date] = stats
+        if date != today_str:
+            _write_motion_stats_cache(date, stats, db_filename)
+
+    return [stats_by_date[date] for date in dates]
+
+
+def invalidate_motion_stats_cache(dates: list[str], db_filename: str = DB_FILE) -> None:
+    """Drop cached motion stats for the given calendar days (e.g. after new GPS uploads)."""
+    if not dates or not Path(db_filename).exists():
+        return
+    placeholders = ",".join("?" for _ in dates)
     with sqlite3.connect(db_filename) as conn:
-        return pd.read_sql(_DAILY_POINTS_SQL, conn, params=[date, date_max])
+        _ensure_motion_stats_cache_table(conn)
+        conn.execute(
+            f"DELETE FROM {_MOTION_STATS_CACHE_TABLE} WHERE date IN ({placeholders})",
+            dates,
+        )
+        conn.commit()
+
+
+def _compute_motion_stats_for_dates(dates: list[str], db_filename: str) -> dict[str, dict]:
+    if not dates:
+        return {}
+    if len(dates) == 1:
+        return {dates[0]: get_daily_motion_stats(dates[0], db_filename=db_filename)}
+
+    points = _load_range_points(dates[0], dates[-1], db_filename)
+    if points.empty:
+        return {date: _empty_motion_stats(date) for date in dates}
+
+    points["day"] = pd.to_datetime(points["timestamp"], utc=True).dt.strftime("%Y-%m-%d")
+    return {
+        date: _aggregate_motion_stats(
+            points.loc[points["day"] == date, _POINT_COLUMNS].reset_index(drop=True),
+            date,
+        )
+        for date in dates
+    }
+
+
+def _ensure_motion_stats_cache_table(conn: sqlite3.Connection) -> None:
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS {_MOTION_STATS_CACHE_TABLE} (
+            date TEXT PRIMARY KEY,
+            payload TEXT NOT NULL
+        )
+    """)
+
+
+def _read_motion_stats_cache(date: str, db_filename: str) -> dict | None:
+    if not Path(db_filename).exists():
+        return None
+    with sqlite3.connect(db_filename) as conn:
+        _ensure_motion_stats_cache_table(conn)
+        row = conn.execute(
+            f"SELECT payload FROM {_MOTION_STATS_CACHE_TABLE} WHERE date = ?",
+            (date,),
+        ).fetchone()
+    if row is None:
+        return None
+    return json.loads(row[0])
+
+
+def _write_motion_stats_cache(date: str, stats: dict, db_filename: str) -> None:
+    with sqlite3.connect(db_filename) as conn:
+        _ensure_motion_stats_cache_table(conn)
+        conn.execute(
+            f"""
+            INSERT OR REPLACE INTO {_MOTION_STATS_CACHE_TABLE} (date, payload)
+            VALUES (?, ?)
+            """,
+            (date, json.dumps(stats)),
+        )
+        conn.commit()
+
+
+def _load_daily_points(date: str, db_filename: str) -> pd.DataFrame:
+    return _load_range_points(date, date, db_filename)
+
+
+def _load_range_points(date_min: str, date_max: str, db_filename: str) -> pd.DataFrame:
+    date_max_ts = f"{date_max}T23:59:59Z"
+    with sqlite3.connect(db_filename) as conn:
+        return pd.read_sql(_DAILY_POINTS_SQL, conn, params=[date_min, date_max_ts])
 
 
 def _aggregate_motion_stats(day_points: pd.DataFrame, date: str) -> dict:

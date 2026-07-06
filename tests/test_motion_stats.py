@@ -1,11 +1,19 @@
 """Tests for daily motion stats aggregation."""
 
 import sqlite3
+from datetime import datetime
 
 import pytest
 
 from incognita.database import DB_NAME
-from incognita.motion_stats import get_daily_motion_stats
+from incognita.motion_stats import (
+    get_daily_motion_stats,
+    get_motion_stats_range,
+    invalidate_motion_stats_cache,
+    _read_motion_stats_cache,
+    _write_motion_stats_cache,
+)
+import incognita.motion_stats as motion_stats_module
 
 
 @pytest.fixture
@@ -75,3 +83,29 @@ def test_get_daily_motion_stats_raises_when_db_missing(tmp_path):
     """Missing database raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         get_daily_motion_stats("2025-01-01", db_filename=str(tmp_path / "missing.db"))
+
+
+def test_motion_stats_cache_round_trip(motion_stats_db):
+    stats = get_daily_motion_stats("2025-01-01", db_filename=str(motion_stats_db))
+    _write_motion_stats_cache("2025-01-01", stats, str(motion_stats_db))
+    assert _read_motion_stats_cache("2025-01-01", str(motion_stats_db)) == stats
+    invalidate_motion_stats_cache(["2025-01-01"], str(motion_stats_db))
+    assert _read_motion_stats_cache("2025-01-01", str(motion_stats_db)) is None
+
+
+def test_motion_stats_range_uses_cache_for_past_days(motion_stats_db, monkeypatch):
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2025, 1, 2, 12, 0, 0)
+
+    monkeypatch.setattr(motion_stats_module, "datetime", FixedDatetime)
+
+    cached = get_daily_motion_stats("2025-01-01", db_filename=str(motion_stats_db))
+    cached["total_km"] = 42.0
+    _write_motion_stats_cache("2025-01-01", cached, str(motion_stats_db))
+
+    rows = get_motion_stats_range(2, db_filename=str(motion_stats_db))
+    assert rows[0]["total_km"] == 42.0
+    assert rows[1]["date"] == "2025-01-02"
+    assert _read_motion_stats_cache("2025-01-02", str(motion_stats_db)) is None
