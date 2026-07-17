@@ -25,6 +25,7 @@ from incognita.flights import (
     get_flights_stats,
     get_flights_visited_countries_for_map,
 )
+from incognita.gps_export import build_gps_export_context
 from incognita.gps_trips_renderer import (
     get_latest_location_snapshot,
     get_trip_points_for_date_range,
@@ -39,7 +40,7 @@ from incognita.health_database import (
 )
 from incognita.observability import configure_logging
 from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX, google_sheets_document_url
-from incognita.values import MAPBOX_API_KEY
+from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
 
 GPS_DEFAULT_DAYS_BACK = 30
 # Date ranges this short (inclusive) render as an animated comet-trace instead of a static map.
@@ -188,6 +189,33 @@ def gps():
         trips_count=trips_count,
         file_size_mb=file_size_mb,
     )
+
+
+@app.route("/gps/export")
+def gps_export():
+    """Render a standalone GPS trace export page with motion stats and an interactive map."""
+    title = request.args.get("title", "")
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+
+    if not start_date or not end_date:
+        return "start_date and end_date are required", 400
+
+    try:
+        context = build_gps_export_context(title, start_date, end_date)
+    except ValueError as exc:
+        return str(exc), 400
+    except FileNotFoundError:
+        return "GPS database not found", 503
+
+    logger.debug(
+        "[/gps/export] title=%s start_date=%s end_date=%s has_paths=%s",
+        context["title"],
+        start_date,
+        end_date,
+        context["has_paths"],
+    )
+    return render_template("gps_export.html", google_maps_api_key=GOOGLE_MAPS_API_KEY, **context)
 
 
 HEALTH_API_URL = "http://localhost:5009/api/health-data"

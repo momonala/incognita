@@ -37,9 +37,24 @@
                     <span>{{ track_points }} track point{{ 's' if track_points != 1 else '' }}</span>
                     <span>{{ file_size_mb|round(2) }} MB</span>
                 </p>
-                <button type="submit" id="submit_button" class="gps-toolbar__submit">Update</button>
+                <div class="gps-toolbar__actions">
+                    <button type="submit" id="submit_button" class="gps-toolbar__submit">Update</button>
+                    <button type="button" id="export_button" class="gps-toolbar__submit">Export</button>
+                </div>
             </form>
         </header>
+
+        <div id="export-dialog" title="Export GPS trace" style="display:none;">
+            <label for="export_title">Title</label>
+            <input type="text" id="export_title" maxlength="120" autocomplete="off" class="ctrl-input gps-export-dialog__input">
+        </div>
+
+        <div id="export-loading-dialog" title="Export" style="display:none;">
+            <div class="gps-export-loading" role="status" aria-live="polite">
+                <span class="gps-export-loading__spinner" aria-hidden="true"></span>
+                <p class="gps-export-loading__text">Generating export…</p>
+            </div>
+        </div>
 
         <section class="gps-map map-page__map" aria-label="GPS track map">
             {% if animated %}
@@ -112,6 +127,80 @@
             $("#start_date, #end_date").on("keydown", function (event) {
                 if (event.key === "Enter") {
                     $("#date_form").submit();
+                }
+            });
+
+            const exportDialog = $("#export-dialog");
+            const loadingDialog = $("#export-loading-dialog");
+
+            loadingDialog.dialog({
+                autoOpen: false,
+                modal: true,
+                width: 320,
+                dialogClass: "gps-export-loading-dialog",
+                closeOnEscape: false,
+                draggable: false,
+                resizable: false,
+            });
+
+            function waitForExportWindow(win) {
+                const started = Date.now();
+                const maxMs = 120000;
+                const timer = setInterval(function () {
+                    let done = false;
+                    try {
+                        done = win.closed || win.document.readyState === "complete";
+                    } catch (e) {
+                        done = Date.now() - started > 3000;
+                    }
+                    if (done || Date.now() - started > maxMs) {
+                        clearInterval(timer);
+                        loadingDialog.dialog("close");
+                    }
+                }, 250);
+            }
+
+            exportDialog.dialog({
+                autoOpen: false,
+                modal: true,
+                width: 400,
+                buttons: {
+                    Cancel: function () {
+                        $(this).dialog("close");
+                    },
+                    Export: function () {
+                        const title = $("#export_title").val().trim();
+                        if (!title) {
+                            $("#export_title").focus();
+                            return;
+                        }
+                        const params = new URLSearchParams({
+                            title: title,
+                            start_date: $("#start_date").val(),
+                            end_date: $("#end_date").val(),
+                        });
+                        $(this).dialog("close");
+                        loadingDialog.dialog("open");
+                        const win = window.open("/gps/export?" + params.toString(), "_blank");
+                        if (!win) {
+                            loadingDialog.dialog("close");
+                            return;
+                        }
+                        waitForExportWindow(win);
+                    },
+                },
+            });
+
+            $("#export_button").on("click", function () {
+                $("#export_title").val("");
+                exportDialog.dialog("open");
+                $("#export_title").focus();
+            });
+
+            $("#export_title").on("keydown", function (event) {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    exportDialog.dialog("widget").find(".ui-dialog-buttonpane button:last").click();
                 }
             });
         });

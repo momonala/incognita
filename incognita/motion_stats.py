@@ -1,6 +1,7 @@
 """Daily GPS motion statistics from the Overland SQLite database."""
 
 import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -20,6 +21,9 @@ ORDER BY timestamp ASC
 """
 
 
+DATE_FMT = "%Y-%m-%d"
+
+
 def get_daily_motion_stats(date: str, db_filename: str = DB_FILE) -> dict:
     """Return daily motion stats for a calendar day (YYYY-MM-DD)."""
     db_path = Path(db_filename)
@@ -28,6 +32,76 @@ def get_daily_motion_stats(date: str, db_filename: str = DB_FILE) -> dict:
 
     day_points = _load_daily_points(date, db_filename)
     return _aggregate_motion_stats(day_points, date)
+
+
+def get_motion_stats_for_date_range(
+    start_date: str,
+    end_date: str,
+    db_filename: str = DB_FILE,
+) -> dict:
+    """Return motion stats aggregated across an inclusive calendar date range."""
+    daily_stats = [
+        get_daily_motion_stats(day, db_filename=db_filename)
+        for day in _iter_dates_inclusive(start_date, end_date)
+    ]
+    return _aggregate_range_motion_stats(start_date, end_date, daily_stats)
+
+
+def _iter_dates_inclusive(start_date: str, end_date: str):
+    """Yield YYYY-MM-DD strings from start through end inclusive."""
+    start_dt = datetime.strptime(start_date, DATE_FMT)
+    end_dt = datetime.strptime(end_date, DATE_FMT)
+    if start_dt > end_dt:
+        raise ValueError("start_date must be on or before end_date")
+
+    current = start_dt
+    while current <= end_dt:
+        yield current.strftime(DATE_FMT)
+        current += timedelta(days=1)
+
+
+def _aggregate_range_motion_stats(
+    start_date: str,
+    end_date: str,
+    daily_stats: list[dict],
+) -> dict:
+    """Merge per-day motion stats into one range summary."""
+    motion_type = _empty_motion_type()
+    total_km = 0.0
+    time_spent_seconds = 0.0
+    max_speed_m_s = 0.0
+    altitude_ascended_m = 0.0
+    altitude_descended_m = 0.0
+
+    for day in daily_stats:
+        total_km += day["total_km"]
+        time_spent_seconds += day["time_spent_seconds"]
+        max_speed_m_s = max(max_speed_m_s, day["max_speed_m_s"])
+        altitude_ascended_m += day["altitude_ascended_m"]
+        altitude_descended_m += day["altitude_descended_m"]
+        for category in MOTION_CATEGORIES:
+            motion_type[category]["distance_km"] += day["motion_type"][category]["distance_km"]
+            motion_type[category]["time_seconds"] += day["motion_type"][category]["time_seconds"]
+
+    for category in MOTION_CATEGORIES:
+        motion_type[category]["distance_km"] = round(motion_type[category]["distance_km"], 3)
+        motion_type[category]["time_seconds"] = round(motion_type[category]["time_seconds"], 1)
+
+    avg_speed_m_s = 0.0
+    if time_spent_seconds > 0:
+        avg_speed_m_s = (total_km * 1000.0) / time_spent_seconds
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "total_km": round(total_km, 3),
+        "max_speed_m_s": round(max_speed_m_s, 3),
+        "avg_speed_m_s": round(avg_speed_m_s, 3),
+        "time_spent_seconds": round(time_spent_seconds, 1),
+        "altitude_ascended_m": round(altitude_ascended_m, 1),
+        "altitude_descended_m": round(altitude_descended_m, 1),
+        "motion_type": motion_type,
+    }
 
 
 def _load_daily_points(date: str, db_filename: str) -> pd.DataFrame:

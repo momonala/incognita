@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -246,6 +247,64 @@ def get_daily_health_dump(date: str, db_filename: str = HEALTH_DB_FILE) -> dict:
         result[_METRIC_KEY[metric]] = round(total * scale, 2)
 
     return result
+
+
+_HEALTH_DATE_FMT = "%Y-%m-%d"
+
+
+def get_health_dump_for_date_range(
+    start_date: str,
+    end_date: str,
+    db_filename: str = HEALTH_DB_FILE,
+) -> dict:
+    """Return daily and total HealthKit stats across an inclusive calendar date range."""
+    start_dt = datetime.strptime(start_date, _HEALTH_DATE_FMT)
+    end_dt = datetime.strptime(end_date, _HEALTH_DATE_FMT)
+    if start_dt > end_dt:
+        raise ValueError("start_date must be on or before end_date")
+
+    days: list[dict] = []
+    totals = {"steps": 0, "km": 0.0, "kcals": 0.0, "flights_climbed": 0}
+    has_steps = has_km = has_kcals = has_flights = False
+
+    current = start_dt
+    while current <= end_dt:
+        date_str = current.strftime(_HEALTH_DATE_FMT)
+        daily = get_daily_health_dump(date_str, db_filename=db_filename)
+        days.append({"date": date_str, **daily})
+
+        if daily["steps"] is not None:
+            totals["steps"] += int(daily["steps"])
+            has_steps = True
+        if daily["km"] is not None:
+            totals["km"] += float(daily["km"])
+            has_km = True
+        if daily["kcals"] is not None:
+            totals["kcals"] += float(daily["kcals"])
+            has_kcals = True
+        if daily["flights_climbed"] is not None:
+            totals["flights_climbed"] += int(daily["flights_climbed"])
+            has_flights = True
+        current += timedelta(days=1)
+
+    return {
+        "totals": {
+            "steps": totals["steps"] if has_steps else None,
+            "km": round(totals["km"], 1) if has_km else None,
+            "kcals": round(totals["kcals"]) if has_kcals else None,
+            "flights_climbed": totals["flights_climbed"] if has_flights else None,
+        },
+        "days": days,
+    }
+
+
+def get_health_stats_for_date_range(
+    start_date: str,
+    end_date: str,
+    db_filename: str = HEALTH_DB_FILE,
+) -> dict[str, int | float | None]:
+    """Sum steps and flights climbed across an inclusive calendar date range."""
+    return get_health_dump_for_date_range(start_date, end_date, db_filename=db_filename)["totals"]
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@
     function makeGhostLayer(tripsData) {
         return new deck.PathLayer({
             id: 'ghost-path', data: tripsData, getPath: d => d.path,
-            getColor: [...ORANGE, 50], getWidth: 2,
+            getColor: [...ORANGE, 110], getWidth: 2.5,
             widthUnits: 'pixels', rounded: true, pickable: false,
         });
     }

@@ -546,6 +546,304 @@ tfoot input {
     outline: none;
 }
 
+.gps-toolbar__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+/* GPS export page — standalone travel dossier with map */
+.gps-export-body {
+    background: var(--export-bg, #f3f1ec);
+}
+
+.gps-export-page {
+    --export-bg: #f3f1ec;
+    --export-surface: #faf9f6;
+    --export-ink: #1c1a17;
+    --export-muted: #736d64;
+    --export-rule: #ddd8cf;
+    --export-track: #e85d04;
+    --export-track-soft: rgba(232, 93, 4, 0.14);
+    --export-display: "Instrument Serif", Georgia, "Times New Roman", serif;
+    --export-data: "Inter", var(--font-sans);
+    --export-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 12px 40px rgba(28, 26, 23, 0.08);
+
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--export-bg);
+}
+
+.gps-export-page__header {
+    flex-shrink: 0;
+    padding: var(--space-md) var(--space-lg) var(--space-sm);
+    background: var(--export-surface);
+    border-bottom: 1px solid var(--export-rule);
+    text-align: center;
+}
+
+.gps-export-hero {
+    max-width: 42rem;
+    margin: 0 auto var(--space-sm);
+}
+
+.gps-export-hero__rule {
+    width: 2.5rem;
+    height: 2px;
+    margin: 0 auto var(--space-sm);
+    background: var(--export-track);
+    border-radius: 1px;
+}
+
+.gps-export-page__title {
+    margin: 0;
+    font-family: var(--export-display);
+    font-size: clamp(1.25rem, 2.6vw, 1.625rem);
+    font-weight: 400;
+    font-style: normal;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    color: var(--export-ink);
+}
+
+.gps-export-page__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem 0.5rem;
+    margin: var(--space-xs) 0 0;
+    font-family: var(--export-data);
+    font-size: 0.75rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+    color: var(--export-muted);
+    line-height: 1.4;
+}
+
+.gps-export-page__meta-sep,
+.gps-export-page__meta-dot {
+    opacity: 0.45;
+    font-weight: 400;
+}
+
+.gps-export-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    margin-top: var(--space-sm);
+}
+
+.gps-export-unit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    margin-top: 0;
+    padding: 2px;
+    border-radius: 999px;
+    background: rgba(28, 26, 23, 0.06);
+}
+
+.gps-export-unit__btn {
+    appearance: none;
+    border: none;
+    margin: 0;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--export-muted);
+    font-family: var(--export-data);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    line-height: 1.2;
+}
+
+.gps-export-unit__btn.is-active {
+    background: #fff;
+    color: var(--export-ink);
+    box-shadow: 0 1px 2px rgba(28, 26, 23, 0.08);
+}
+
+.gps-export-unit__btn:focus-visible {
+    outline: 2px solid var(--export-track);
+    outline-offset: 2px;
+}
+
+.gps-export-glance {
+    max-width: 44rem;
+    margin: var(--space-md) auto 0;
+}
+
+.gps-export-glance__list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-md) var(--space-xl);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.gps-export-glance__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    min-width: 4.5rem;
+}
+
+.gps-export-glance__label {
+    font-family: var(--export-data);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    color: var(--export-muted);
+    line-height: 1.2;
+}
+
+.gps-export-glance__value {
+    font-family: var(--export-data);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.015em;
+    color: var(--export-ink);
+    line-height: 1.2;
+}
+
+.gps-export-page__map {
+    flex: 1 1 0;
+    min-height: 0;
+    position: relative;
+    background: var(--export-rule);
+}
+
+#gps-export-map-container {
+    width: 100%;
+    height: 100%;
+}
+
+.gps-export-page__empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    margin: 0;
+    padding: var(--space-lg);
+    font-family: var(--export-data);
+    font-size: 0.9375rem;
+    color: var(--export-muted);
+    text-align: center;
+}
+
+.gps-export-dialog__input {
+    display: block;
+    width: 100%;
+    margin-top: var(--space-sm);
+    box-sizing: border-box;
+}
+
+.gps-export-loading-dialog .ui-dialog-titlebar-close {
+    display: none;
+}
+
+.gps-export-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-sm) var(--space-sm);
+    text-align: center;
+}
+
+.gps-export-loading__spinner {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 2px solid var(--color-border-light);
+    border-top-color: var(--color-accent);
+    border-radius: 50%;
+    animation: gps-export-spin 0.7s linear infinite;
+}
+
+.gps-export-loading__text {
+    margin: 0;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+}
+
+@keyframes gps-export-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gps-export-loading__spinner {
+        animation: none;
+        border-top-color: var(--color-border-light);
+        opacity: 0.7;
+    }
+}
+
+@media (max-width: 720px) {
+    .gps-export-page__header {
+        padding: var(--space-sm) var(--space-md) var(--space-xs);
+    }
+
+    .gps-export-glance__list {
+        gap: var(--space-sm) var(--space-md);
+    }
+
+    .gps-export-glance__item {
+        min-width: 3.75rem;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .gps-export-hero__rule {
+        transform-origin: center;
+        animation: gps-export-rule-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .gps-export-glance {
+        animation: gps-export-panel-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+    }
+}
+
+@keyframes gps-export-rule-in {
+    from {
+        opacity: 0;
+        transform: scaleX(0.4);
+    }
+    to {
+        opacity: 1;
+        transform: scaleX(1);
+    }
+}
+
+@keyframes gps-export-panel-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gps-export-hero__rule,
+    .gps-export-glance {
+        animation: none;
+    }
+}
+
 /* Passport page — same layout as GPS: bar + full-viewport map */
 .passport-page.map-page {
     /* inherits from .map-page */

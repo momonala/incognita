@@ -75,3 +75,31 @@ def test_get_daily_motion_stats_raises_when_db_missing(tmp_path):
     """Missing database raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         get_daily_motion_stats("2025-01-01", db_filename=str(tmp_path / "missing.db"))
+
+
+def test_get_motion_stats_for_date_range_single_day(motion_stats_db):
+    """Single-day range matches daily stats."""
+    from incognita.motion_stats import get_daily_motion_stats, get_motion_stats_for_date_range
+
+    daily = get_daily_motion_stats("2025-01-01", db_filename=str(motion_stats_db))
+    ranged = get_motion_stats_for_date_range(
+        "2025-01-01",
+        "2025-01-01",
+        db_filename=str(motion_stats_db),
+    )
+
+    assert ranged["start_date"] == "2025-01-01"
+    assert ranged["end_date"] == "2025-01-01"
+    assert ranged["total_km"] == daily["total_km"]
+    assert ranged["max_speed_m_s"] == daily["max_speed_m_s"]
+
+
+def test_get_motion_stats_for_date_range_rejects_inverted_dates(motion_stats_db):
+    from incognita.motion_stats import get_motion_stats_for_date_range
+
+    with pytest.raises(ValueError, match="start_date must be on or before end_date"):
+        get_motion_stats_for_date_range(
+            "2025-01-02",
+            "2025-01-01",
+            db_filename=str(motion_stats_db),
+        )

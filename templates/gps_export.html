@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} | Incognita</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+    {% if has_paths %}
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}"></script>
+    <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
+    <script src="https://unpkg.com/@deck.gl/google-maps@^9.0.0/dist.min.js"></script>
+    {% endif %}
+</head>
+<body class="gps-export-body">
+    <main class="gps-export-page">
+        <header class="gps-export-page__header">
+            <div class="gps-export-hero">
+                <div class="gps-export-hero__rule" aria-hidden="true"></div>
+                <h1 class="gps-export-page__title">{{ title }}</h1>
+                <p class="gps-export-page__meta">
+                    <time datetime="{{ start_date }}">{{ start_date_display }}</time>
+                    <span class="gps-export-page__meta-sep" aria-hidden="true">–</span>
+                    <time datetime="{{ end_date }}">{{ end_date_display }}</time>
+                    <span class="gps-export-page__meta-dot" aria-hidden="true">·</span>
+                    <span>{{ day_count }} day{{ 's' if day_count != 1 else '' }}</span>
+                </p>
+                <div class="gps-export-toggles">
+                    <div class="gps-export-unit" role="group" aria-label="Statistic scope">
+                        <button type="button" class="gps-export-unit__btn is-active" data-scope="total" aria-pressed="true">Total</button>
+                        <button type="button" class="gps-export-unit__btn" data-scope="avg" aria-pressed="false">Per day</button>
+                    </div>
+                    <div class="gps-export-unit" role="group" aria-label="Distance unit">
+                        <button type="button" class="gps-export-unit__btn is-active" data-unit="km" aria-pressed="true">km</button>
+                        <button type="button" class="gps-export-unit__btn" data-unit="mi" aria-pressed="false">mi</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gps-export-glance" role="region" aria-label="Trip statistics">
+                <ul class="gps-export-glance__list" id="gps-export-stats"></ul>
+            </div>
+        </header>
+
+        <section class="gps-export-page__map" aria-label="GPS track map">
+            {% if has_paths %}
+            <div id="gps-export-map-container"></div>
+            {% else %}
+            <p class="gps-export-page__empty">No GPS tracks found for this date range.</p>
+            {% endif %}
+        </section>
+    </main>
+
+    <script type="application/json" id="gps-export-stats-data">{{ {"total": stat_cards, "avg": avg_stat_cards} | tojson }}</script>
+
+    <script>
+(function () {
+    const KM_PER_MI = 1.609344;
+    const dataEl = document.getElementById('gps-export-stats-data');
+    const listEl = document.getElementById('gps-export-stats');
+    if (!dataEl || !listEl) return;
+
+    const statsByScope = JSON.parse(dataEl.textContent);
+    const scopeButtons = document.querySelectorAll('[data-scope]');
+    const unitButtons = document.querySelectorAll('[data-unit]');
+    let scope = 'total';
+    let unit = 'km';
+
+    function formatDistance(km) {
+        if (unit === 'mi') {
+            return (km / KM_PER_MI).toFixed(1) + ' mi';
+        }
+        return Number(km).toFixed(1) + ' km';
+    }
+
+    function displayValue(card) {
+        if (card.km !== null && card.km !== undefined) {
+            return formatDistance(card.km);
+        }
+        return card.value;
+    }
+
+    function renderStats() {
+        const cards = statsByScope[scope] || [];
+        listEl.innerHTML = cards.map(function (card) {
+            return (
+                '<li class="gps-export-glance__item">' +
+                '<span class="gps-export-glance__label">' + card.label + '</span>' +
+                '<span class="gps-export-glance__value">' + displayValue(card) + '</span>' +
+                '</li>'
+            );
+        }).join('');
+    }
+
+    function setPressed(buttons, attr, value) {
+        buttons.forEach(function (btn) {
+            const active = btn.getAttribute(attr) === value;
+            btn.classList.toggle('is-active', active);
+            btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+    }
+
+    scopeButtons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            scope = btn.dataset.scope;
+            setPressed(scopeButtons, 'data-scope', scope);
+            renderStats();
+        });
+    });
+
+    unitButtons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            unit = btn.dataset.unit;
+            setPressed(unitButtons, 'data-unit', unit);
+            renderStats();
+        });
+    });
+
+    renderStats();
+})();
+    </script>
+
+    {% if has_paths %}
+    <script>
+(function () {
+    const TRACK_COLOR = [232, 93, 4, 210];
+    const paths = {{ paths | tojson }};
+    const bbox = {{ bbox | tojson }};
+    const container = document.getElementById('gps-export-map-container');
+    if (!container || !paths.length || typeof google === 'undefined') return;
+
+    const pathData = paths.map((path, index) => ({ path, id: index }));
+
+    const map = new google.maps.Map(container, {
+        center: { lat: bbox.center_lat, lng: bbox.center_lng },
+        zoom: 11,
+        mapTypeId: 'roadmap',
+        gestureHandling: 'greedy',
+        disableDefaultUI: false,
+        zoomControl: true,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: true,
+    });
+
+    const overlay = new deck.GoogleMapsOverlay({
+        layers: [
+            new deck.PathLayer({
+                id: 'gps-export-paths',
+                data: pathData,
+                getPath: d => d.path,
+                getColor: TRACK_COLOR,
+                widthMinPixels: 3,
+                rounded: true,
+                pickable: true,
+            }),
+        ],
+    });
+    overlay.setMap(map);
+
+    map.fitBounds(
+        new google.maps.LatLngBounds(
+            { lat: bbox.min_lat, lng: bbox.min_lng },
+            { lat: bbox.max_lat, lng: bbox.max_lng },
+        ),
+        56,
+    );
+})();
+    </script>
+    {% endif %}
+</body>
+</html>
