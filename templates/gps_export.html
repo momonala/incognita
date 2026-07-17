@@ -82,13 +82,26 @@
         return card.value;
     }
 
+    function escapeHtml(text) {
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
     function renderStats() {
         const cards = statsByScope[scope] || [];
         listEl.innerHTML = cards.map(function (card) {
+            const full = escapeHtml(card.label);
+            const short = escapeHtml(card.label_short || card.label);
             return (
                 '<li class="gps-export-glance__item">' +
-                '<span class="gps-export-glance__label">' + card.label + '</span>' +
-                '<span class="gps-export-glance__value">' + displayValue(card) + '</span>' +
+                '<span class="gps-export-glance__label">' +
+                '<span class="gps-export-glance__label-full">' + full + '</span>' +
+                '<span class="gps-export-glance__label-short">' + short + '</span>' +
+                '</span>' +
+                '<span class="gps-export-glance__value">' + escapeHtml(displayValue(card)) + '</span>' +
                 '</li>'
             );
         }).join('');

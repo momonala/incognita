@@ -10,11 +10,11 @@ GPS_EXPORT_TITLE_MAX_LEN = 120
 DATE_FMT = "%Y-%m-%d"
 
 STAT_LABELS = (
-    ("total_dist", "Distance"),
-    ("walk_dist", "Walking"),
-    ("steps", "Steps"),
-    ("calories", "Calories"),
-    ("stairs", "Stairs"),
+    ("total_dist", "Distance", "Dist"),
+    ("walk_dist", "Walking", "Walk"),
+    ("steps", "Steps", "Steps"),
+    ("calories", "Calories", "Cal"),
+    ("stairs", "Stairs", "Stairs"),
 )
 
 DISTANCE_KEYS = frozenset({"total_dist", "walk_dist"})
@@ -131,13 +131,14 @@ def _stat_raw(
 def _stat_cards_from_raw(raw: dict[str, float | None]) -> list[dict]:
     """Build template-ready stat cards from raw values (distances stored as km)."""
     cards: list[dict] = []
-    for key, label in STAT_LABELS:
+    for key, label, label_short in STAT_LABELS:
         value = raw[key]
         if key in DISTANCE_KEYS:
             cards.append(
                 {
                     "key": key,
                     "label": label,
+                    "label_short": label_short,
                     "value": format_km(value),
                     "km": None if value is None else round(float(value), 1),
                 }
@@ -149,7 +150,15 @@ def _stat_cards_from_raw(raw: dict[str, float | None]) -> list[dict]:
             display = format_calories(value)
         else:
             display = format_stairs(value)
-        cards.append({"key": key, "label": label, "value": display, "km": None})
+        cards.append(
+            {
+                "key": key,
+                "label": label,
+                "label_short": label_short,
+                "value": display,
+                "km": None,
+            }
+        )
     return cards
 
 

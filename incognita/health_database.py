@@ -1,5 +1,6 @@
 """SQLite storage for raw HealthKit samples from the iOS export app."""
 
+import json
 import logging
 import sqlite3
 from datetime import datetime, timedelta
@@ -12,6 +13,7 @@ from incognita.data_models import HealthKitBatch, HealthKitExportType
 logger = logging.getLogger(__name__)
 
 HEALTH_DB_FILE = "data/health_data.db"
+_HEALTH_DUMP_CACHE_TABLE = "daily_health_dump_cache"
 
 _CREATE_TABLE_SQL = """
     CREATE TABLE IF NOT EXISTS {table} (
@@ -83,6 +85,10 @@ def insert_health_batch(
             conn.executemany(_INSERT_SQL.format(table=table_name), rows)
             inserted += conn.total_changes - before
         conn.commit()
+
+    if inserted > 0:
+        affected_dates = {sample.start[:10] for sample in batch.samples}
+        invalidate_health_dump_cache(sorted(affected_dates), db_filename)
 
     skipped = len(batch.samples) - inserted
     logger.debug(
@@ -305,6 +311,90 @@ def get_health_stats_for_date_range(
 ) -> dict[str, int | float | None]:
     """Sum steps and flights climbed across an inclusive calendar date range."""
     return get_health_dump_for_date_range(start_date, end_date, db_filename=db_filename)["totals"]
+
+
+def get_health_dump_range(days: int, db_filename: str = HEALTH_DB_FILE) -> list[dict]:
+    """Return dominant-hardware daily health totals for the last ``days`` days (oldest first).
+
+    Past calendar days are served from a SQLite cache; today is always recomputed.
+    """
+    if days < 1:
+        raise ValueError("days must be at least 1")
+
+    today = datetime.now().date()
+    today_str = today.strftime("%Y-%m-%d")
+    dates = [(today - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(days - 1, -1, -1)]
+
+    rows_by_date: dict[str, dict] = {}
+    to_compute: list[str] = []
+
+    for date in dates:
+        if date == today_str:
+            to_compute.append(date)
+            continue
+        cached = _read_health_dump_cache(date, db_filename)
+        if cached is not None:
+            rows_by_date[date] = cached
+        else:
+            to_compute.append(date)
+
+    for date in to_compute:
+        payload = {"date": date, **get_daily_health_dump(date, db_filename=db_filename)}
+        rows_by_date[date] = payload
+        if date != today_str:
+            _write_health_dump_cache(date, payload, db_filename)
+
+    return [rows_by_date[date] for date in dates]
+
+
+def invalidate_health_dump_cache(dates: list[str], db_filename: str = HEALTH_DB_FILE) -> None:
+    """Drop cached health summaries for the given calendar days."""
+    if not dates or not Path(db_filename).exists():
+        return
+    placeholders = ",".join("?" for _ in dates)
+    with sqlite3.connect(db_filename) as conn:
+        _ensure_health_dump_cache_table(conn)
+        conn.execute(
+            f"DELETE FROM {_HEALTH_DUMP_CACHE_TABLE} WHERE date IN ({placeholders})",
+            dates,
+        )
+        conn.commit()
+
+
+def _ensure_health_dump_cache_table(conn: sqlite3.Connection) -> None:
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS {_HEALTH_DUMP_CACHE_TABLE} (
+            date TEXT PRIMARY KEY,
+            payload TEXT NOT NULL
+        )
+    """)
+
+
+def _read_health_dump_cache(date: str, db_filename: str) -> dict | None:
+    if not Path(db_filename).exists():
+        return None
+    with sqlite3.connect(db_filename) as conn:
+        _ensure_health_dump_cache_table(conn)
+        row = conn.execute(
+            f"SELECT payload FROM {_HEALTH_DUMP_CACHE_TABLE} WHERE date = ?",
+            (date,),
+        ).fetchone()
+    if row is None:
+        return None
+    return json.loads(row[0])
+
+
+def _write_health_dump_cache(date: str, payload: dict, db_filename: str) -> None:
+    with sqlite3.connect(db_filename) as conn:
+        _ensure_health_dump_cache_table(conn)
+        conn.execute(
+            f"""
+            INSERT OR REPLACE INTO {_HEALTH_DUMP_CACHE_TABLE} (date, payload)
+            VALUES (?, ?)
+            """,
+            (date, json.dumps(payload)),
+        )
+        conn.commit()
 
 
 if __name__ == "__main__":

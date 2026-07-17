@@ -676,15 +676,17 @@ tfoot input {
 }
 
 .gps-export-glance {
+    width: 100%;
     max-width: 44rem;
     margin: var(--space-md) auto 0;
+    padding: 0 var(--space-sm);
+    box-sizing: border-box;
 }
 
 .gps-export-glance__list {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: var(--space-md) var(--space-xl);
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: var(--space-xs) var(--space-sm);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -695,25 +697,31 @@ tfoot input {
     flex-direction: column;
     align-items: center;
     gap: 0.15rem;
-    min-width: 4.5rem;
+    min-width: 0;
+    text-align: center;
 }
 
 .gps-export-glance__label {
     font-family: var(--export-data);
-    font-size: 0.6875rem;
+    font-size: clamp(0.5625rem, 2.1vw, 0.6875rem);
     font-weight: 400;
     color: var(--export-muted);
     line-height: 1.2;
 }
 
+.gps-export-glance__label-short {
+    display: none;
+}
+
 .gps-export-glance__value {
     font-family: var(--export-data);
-    font-size: 0.9375rem;
+    font-size: clamp(0.6875rem, 2.8vw, 0.875rem);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.015em;
     color: var(--export-ink);
     line-height: 1.2;
+    overflow-wrap: anywhere;
 }
 
 .gps-export-page__map {
@@ -795,12 +803,20 @@ tfoot input {
         padding: var(--space-sm) var(--space-md) var(--space-xs);
     }
 
-    .gps-export-glance__list {
-        gap: var(--space-sm) var(--space-md);
+    .gps-export-glance {
+        padding: 0 var(--space-xs);
     }
 
-    .gps-export-glance__item {
-        min-width: 3.75rem;
+    .gps-export-glance__list {
+        gap: 0.2rem 0.35rem;
+    }
+
+    .gps-export-glance__label-full {
+        display: none;
+    }
+
+    .gps-export-glance__label-short {
+        display: inline;
     }
 }
 

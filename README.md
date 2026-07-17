@@ -48,7 +48,7 @@ flowchart LR
 - **Live Location**: Real-time map showing most recent GPS fix with animated day-path replay; staleness dot uses the fresher of the last GPS fix or last heartbeat, so the indicator stays green while stationary
 - **Flight Tracking**: Analyze flight history with statistics and visualizations
 - **Countries Visited**: Track and visualize countries visited with passport-style view
-- **Heartbeat Monitoring**: Telegram alerts for data streaming downtime
+- **Heartbeat Monitoring**: Telegram alerts for data streaming downtime, with escalating backoff (1m → 5m → 30m → 1h). Alerts are muted during overnight quiet hours (11pm–7am) and during an active snooze window (set via `/snooze` from the Trace app when the phone is intentionally offline)
 - **Daily Motion Stats**: Per-day distance, speed, altitude gain/loss, and time by motion type from the GPS database
 
 ## Prerequisites
@@ -159,6 +159,7 @@ incognita/
 | `/status` | GET | Server status |
 | `/dump` | POST | Receive GeoJSON location data from Overland app |
 | `/heartbeat` | POST | Heartbeat endpoint for monitoring; forwards to web app |
+| `/snooze` | POST | Mute downtime alerts for `{"hours": 1–24}` (phone intentionally offline) |
 | `/ios-dump` | POST | Receive HealthKit sample batches from the iOS export app |
 | `/health-data` | GET | Daily HealthKit summary (steps, distance, energy, flights climbed) |
 | `/motion-stats` | GET | Daily GPS motion summary from SQLite (distance, speed, altitude, by motion type) |
@@ -311,7 +312,8 @@ Data API server includes watchdog thread:
 |----------|------|
 | Continuous | Monitor heartbeat endpoint |
 | Escalating | Send Telegram alerts if no heartbeat (1m, 5m, 30m, 60m) |
-| Recovery | Alert when heartbeat recovers |
+| Recovery | Reset backoff to 1m when the heartbeat returns (no message sent) |
+| Muting | Suppress alerts during quiet hours (11pm–7am) or an active `/snooze` window |
 
 ## Development Commands
 
@@ -360,4 +362,4 @@ Configure Overland app to POST to your server:
 - Files with missing `horizontal_accuracy` are skipped
 - Database uses WAL mode for concurrent writes
 - No authentication on API endpoints
-- Heartbeat alerts disabled between 11pm-7am
+- Heartbeat alerts muted between 11pm–7am and during an active `/snooze` window
