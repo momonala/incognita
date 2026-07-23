@@ -30,7 +30,7 @@ else:
 GPS_POINT_COLUMNS = ["lon", "lat", "timestamp"]
 TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
 METERS_PER_DEGREE = 111_000.0
-MAX_WORKERS_CAP = 32
+MAX_WORKERS_CAP = 8
 CPU_EXTRA_WORKERS = 4
 
 # Shared segmentation/simplification defaults used by all public trip-loading functions.
@@ -188,10 +188,18 @@ def _compute_month_dir_hash(month_root: Path) -> str:
     return _compute_geojson_tree_hash(month_root)
 
 
-def _load_one_geojson(path: Path) -> list[dict]:
-    """Read one GeoJSON file and return list of parsed point dicts, or [] on failure."""
+def _load_one_geojson(path: Path) -> pd.DataFrame:
+    """Read one GeoJSON file into a compact lon/lat/timestamp DataFrame, or empty on failure.
+
+    Converting each file to columnar form here (rather than accumulating a shared list of
+    dicts across the whole subtree) keeps only one file's worth of dicts alive at a time and
+    drops every column the trip renderer doesn't need, capping peak memory on wide lookbacks.
+    """
     raw = read_geojson_file(str(path))
-    return extract_properties_from_geojson(raw) if raw else []
+    rows = extract_properties_from_geojson(raw) if raw else []
+    if not rows:
+        return pd.DataFrame(columns=GPS_POINT_COLUMNS)
+    return pd.DataFrame(rows, columns=GPS_POINT_COLUMNS)
 
 
 def _load_points_from_root(root: Path, scope_label: str) -> pd.DataFrame:
@@ -202,21 +210,19 @@ def _load_points_from_root(root: Path, scope_label: str) -> pd.DataFrame:
 
     paths = list(root.rglob("*.geojson"))
     max_workers = min(MAX_WORKERS_CAP, (os.cpu_count() or 1) + CPU_EXTRA_WORKERS)
-    rows: list[dict] = []
+    frames: list[pd.DataFrame] = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for chunk in executor.map(_load_one_geojson, paths):
-            rows.extend(chunk)
+        for frame in executor.map(_load_one_geojson, paths):
+            if not frame.empty:
+                frames.append(frame)
 
-    logger.debug(f"[_load_points_from_root] {scope_label} | {root} | {len(rows)} points")
-    if not rows:
+    if not frames:
         logger.debug("[_load_points_from_root] %s | %s | no points", scope_label, root)
         return pd.DataFrame(columns=GPS_POINT_COLUMNS)
 
-    df = pd.DataFrame(rows)
-    if df.empty:
-        logger.debug("Parsed empty DataFrame for %s (%s)", scope_label, root)
-        return df
-
+    df = pd.concat(frames, ignore_index=True)
+    del frames
+    logger.debug(f"[_load_points_from_root] {scope_label} | {root} | {len(df)} points")
     df["timestamp"] = pd.to_datetime(df["timestamp"], format=TIMESTAMP_FMT, utc=True, errors="raise")
     df = df.sort_values("timestamp").reset_index(drop=True)
     return df
