@@ -20,12 +20,12 @@ def get_haversine_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 def add_speed_to_gdf(gdf: pd.DataFrame) -> pd.DataFrame:
     """Add time_diff, meters, speed_calc, and index columns (segment distance and speed).
 
+    Each value describes the segment ending at that row, so the first row is NaN.
+
     Args:
         gdf: Must have columns lon, lat, timestamp.
     """
-    gdf["time_diff"] = pd.to_datetime(gdf["timestamp"])
-    diff = gdf["time_diff"].diff(1)
-    gdf["time_diff"] = diff.astype(int) / 10**9
+    gdf["time_diff"] = pd.to_datetime(gdf["timestamp"]).diff(1).dt.total_seconds()
     haversine_args = gdf["lat"].shift(1), gdf["lon"].shift(1), gdf.loc[1:, "lat"], gdf.loc[1:, "lon"]
     gdf["meters"] = get_haversine_dist(*haversine_args)
     gdf["speed_calc"] = gdf["meters"] / gdf["time_diff"]

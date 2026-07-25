@@ -13,6 +13,16 @@ from incognita.gps_geometry import add_speed_to_gdf
 MOTION_CATEGORIES = ("automotive", "cycling", "running", "stationary", "unknown", "walking")
 
 ALTITUDE_SAMPLE_EVERY_N = 60
+
+# A segment only counts as movement if the device actually moved. Below this the reading is GPS
+# drift, not motion: sitting still with the phone in hand reports a trickle of sub-1 km/h points.
+MIN_MOVING_SPEED_KMH = 0.3
+_MIN_MOVING_SPEED_M_S = MIN_MOVING_SPEED_KMH / 3.6
+
+# GPS logging pauses while stationary, so consecutive points can be hours apart. Crediting that
+# whole gap (and the straight line across it) to the motion label of the point that ends it is what
+# inflated `unknown`. Longer gaps are untracked time and count toward nothing.
+MAX_SEGMENT_GAP_S = 300
 _MOTION_STATS_CACHE_TABLE = "daily_motion_stats_cache"
 
 _DAILY_POINTS_SQL = f"""
@@ -223,28 +233,26 @@ def _aggregate_motion_stats(day_points: pd.DataFrame, date: str) -> dict:
     if day_points.empty:
         return _empty_motion_stats(date)
 
-    motion_type = _empty_motion_type()
+    # Deltas come from the full day timeline: filtering rows out first would collapse the gaps they
+    # occupied into the surviving segments.
+    timeline = add_speed_to_gdf(day_points.reset_index(drop=True))
 
-    moving = day_points.loc[_is_moving(day_points)].copy()
-    if moving.empty:
-        motion_type["stationary"]["time_seconds"] = round(_stationary_seconds(day_points), 1)
+    motion_type = _empty_motion_type()
+    motion_type["stationary"]["time_seconds"] = round(_stationary_seconds(timeline), 1)
+
+    segments = timeline.loc[_is_moving_segment(timeline)]
+    if segments.empty:
         return _build_stats_dict(date, motion_type)
 
-    moving = add_speed_to_gdf(moving)
-    segments = moving.loc[moving["meters"].fillna(0) > 0]
-    speeds = moving["speed"].dropna()
-    altitude_ascended_m, altitude_descended_m = _altitude_ascended_descended(moving["altitude"])
-
-    if not segments.empty:
-        _apply_segment_totals_by_motion(segments, motion_type)
-
-    motion_type["stationary"]["time_seconds"] = round(_stationary_seconds(day_points), 1)
+    _apply_segment_totals_by_motion(segments, motion_type)
+    speeds = segments["speed"].dropna()
+    altitude_ascended_m, altitude_descended_m = _altitude_ascended_descended(segments["altitude"])
 
     return _build_stats_dict(
         date,
         motion_type,
-        total_km=float(segments["meters"].sum() / 1000.0) if not segments.empty else 0.0,
-        time_spent_seconds=float(segments["time_diff"].sum()) if not segments.empty else 0.0,
+        total_km=float(segments["meters"].sum() / 1000.0),
+        time_spent_seconds=float(segments["time_diff"].sum()),
         max_speed_m_s=float(speeds.max()) if not speeds.empty else 0.0,
         avg_speed_m_s=float(speeds.mean()) if not speeds.empty else 0.0,
         altitude_ascended_m=altitude_ascended_m,
@@ -283,13 +291,22 @@ def _build_stats_dict(
     }
 
 
-def _is_moving(day_points: pd.DataFrame) -> pd.Series:
-    return day_points["speed"].fillna(0) > 0
+def _is_moving_segment(timeline: pd.DataFrame) -> pd.Series:
+    """Segments that represent real, continuously tracked movement.
+
+    The day's first row has no predecessor, so its NaN duration excludes it.
+    """
+    seconds = timeline["time_diff"].fillna(0)
+    return (
+        (timeline["speed"].fillna(0) >= _MIN_MOVING_SPEED_M_S)
+        & (seconds > 0)
+        & (seconds <= MAX_SEGMENT_GAP_S)
+        & (timeline["meters"].fillna(0) > 0)
+    )
 
 
-def _stationary_seconds(day_points: pd.DataFrame) -> float:
-    """Seconds labeled stationary from the full day (includes speed=0 rows)."""
-    timeline = add_speed_to_gdf(day_points.copy())
+def _stationary_seconds(timeline: pd.DataFrame) -> float:
+    """Seconds labeled stationary across the full day (includes speed=0 rows)."""
     return float(timeline.loc[timeline["motion"] == "stationary", "time_diff"].fillna(0).sum())
 
 

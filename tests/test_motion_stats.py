@@ -25,10 +25,16 @@ def motion_stats_db(tmp_path):
         (-122.4194, 37.7749, "2025-01-01T10:00:00Z", 1.0, 100.0, "walking"),
         (-122.4194, 37.7760, "2025-01-01T10:01:00Z", 2.0, 110.0, "walking"),
         (-122.4194, 37.7760, "2025-01-01T10:02:00Z", 0.0, 110.0, "stationary"),
-        (-122.42, 37.78, "2025-01-01T11:00:00Z", 15.0, 110.0, "driving"),
-        (-122.41, 37.79, "2025-01-01T11:05:00Z", 20.0, 110.0, "automotive"),
+        # Hour-long logging gap: the next point must not credit that hour to automotive.
+        (-122.42, 37.78, "2025-01-01T11:00:00Z", 15.0, 110.0, "automotive"),
+        (-122.41, 37.79, "2025-01-01T11:04:00Z", 20.0, 110.0, "automotive"),
         (-122.40, 37.80, "2025-01-01T12:00:00Z", 3.0, 110.0, None),
-        (-122.39, 37.81, "2025-01-01T12:10:00Z", 4.0, 90.0, "running"),
+        (-122.39, 37.81, "2025-01-01T12:04:00Z", 4.0, 90.0, "running"),
+        # Sitting still with the phone: drift under the floor counts as neither time nor km.
+        # Speeds are m/s, so 0.05 m/s is 0.18 km/h.
+        (-122.3900, 37.8100, "2025-01-01T13:00:00Z", 0.0, 90.0, "unknown"),
+        (-122.3901, 37.8101, "2025-01-01T13:00:30Z", 0.05, 90.0, "unknown"),
+        (-122.3900, 37.8100, "2025-01-01T13:01:00Z", 0.07, 90.0, "unknown"),
     ]
     with sqlite3.connect(db_path) as conn:
         conn.execute(f"""
@@ -70,6 +76,23 @@ def test_get_daily_motion_stats_groups_motion_and_stationary_time(motion_stats_d
     assert stats["motion_type"]["automotive"]["distance_km"] > 0
     assert stats["motion_type"]["running"]["distance_km"] > 0
     assert stats["motion_type"]["cycling"]["distance_km"] == 0.0
+
+
+def test_segments_spanning_logging_gaps_are_excluded(motion_stats_db):
+    """A point arriving after an hour-long gap contributes neither its gap nor its jump distance."""
+    stats = get_daily_motion_stats("2025-01-01", db_filename=str(motion_stats_db))
+
+    # Only the 240s automotive segment counts; the 3480s gap that precedes it does not.
+    assert stats["motion_type"]["automotive"]["time_seconds"] == pytest.approx(240.0, rel=0.01)
+    assert stats["time_spent_seconds"] < 3600
+
+
+def test_low_speed_jitter_is_not_counted_as_movement(motion_stats_db):
+    """Sub-walking-pace readings while stationary add no unknown time or distance."""
+    stats = get_daily_motion_stats("2025-01-01", db_filename=str(motion_stats_db))
+
+    assert stats["motion_type"]["unknown"]["time_seconds"] == 0.0
+    assert stats["motion_type"]["unknown"]["distance_km"] == 0.0
 
 
 def test_stationary_time_uses_speed_zero_rows(motion_stats_db):
