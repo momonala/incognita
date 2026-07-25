@@ -5,16 +5,16 @@ from datetime import datetime
 
 import pytest
 
+import incognita.motion_stats as motion_stats_module
 from incognita.database import DB_NAME
 from incognita.motion_stats import (
+    _read_motion_stats_cache,
+    _write_motion_stats_cache,
     get_daily_motion_stats,
     get_motion_stats_for_date_range,
     get_motion_stats_range,
     invalidate_motion_stats_cache,
-    _read_motion_stats_cache,
-    _write_motion_stats_cache,
 )
-import incognita.motion_stats as motion_stats_module
 
 
 @pytest.fixture

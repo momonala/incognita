@@ -273,6 +273,19 @@ def _get_coordinates_window(lookback_hours: int) -> tuple[datetime, datetime]:
     return start_dt, end_dt
 
 
+def _get_day_window(date_str: str) -> tuple[datetime, datetime]:
+    """Return the UTC window covering one local calendar day, clamped to now.
+
+    Day boundaries are local (matching /motion-stats and /health-data), but the window is
+    converted to UTC because the raw data directories are partitioned by UTC hour.
+    """
+    day = datetime.strptime(date_str, "%Y-%m-%d")
+    start_local = day.astimezone()
+    end_local = (day + timedelta(days=1)).astimezone()
+    now = datetime.now(timezone.utc)
+    return start_local.astimezone(timezone.utc), min(end_local.astimezone(timezone.utc), now)
+
+
 def _format_ts_for_api(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(TIMESTAMP_FMT)
 
@@ -475,37 +488,63 @@ def health_data_range():
 @app.route("/coordinates", methods=["GET"])
 @log_payload_size
 def get_coordinates():
-    """Return simplified trip coordinates from raw GPS files."""
-    try:
-        lookback_hours = request.args.get("lookback_hours", default=DEFAULT_LOOKBACK_HOURS, type=int)
-        if lookback_hours <= 0:
-            return jsonify({"status": "error", "message": "lookback_hours must be positive"}), 400
+    """Return simplified trip coordinates from raw GPS files.
 
-        start_dt, end_dt = _get_coordinates_window(lookback_hours)
+    Query params (mutually exclusive):
+        date (str): YYYY-MM-DD or ``today``. Returns that local calendar day.
+        lookback_hours (int): Hours back from now. Defaults to 24.
+    """
+    date_arg = request.args.get("date")
+    lookback_arg = request.args.get("lookback_hours")
+    if date_arg is not None and lookback_arg is not None:
+        return jsonify({"status": "error", "message": "pass either date or lookback_hours, not both"}), 400
+
+    try:
+        if date_arg is not None:
+            date_str = datetime.now().strftime("%Y-%m-%d") if date_arg == "today" else date_arg
+            try:
+                start_dt, end_dt = _get_day_window(date_str)
+            except ValueError:
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": "Invalid date format: please provide date as YYYY-MM-DD.",
+                        }
+                    ),
+                    400,
+                )
+            # A day that hasn't started yet has no window to query.
+            if start_dt >= end_dt:
+                return jsonify({"status": "success", "count": 0, "date": date_str, "paths": []})
+            scope: dict[str, str | int] = {"date": date_str}
+        else:
+            try:
+                lookback_hours = int(lookback_arg) if lookback_arg is not None else DEFAULT_LOOKBACK_HOURS
+            except ValueError:
+                return jsonify({"status": "error", "message": "lookback_hours must be an integer"}), 400
+            if lookback_hours <= 0:
+                return jsonify({"status": "error", "message": "lookback_hours must be positive"}), 400
+            start_dt, end_dt = _get_coordinates_window(lookback_hours)
+            scope = {"lookback_hours": lookback_hours}
+
         logger.debug(
-            "[coordinates] fetching file-backed coordinates lookback_hours=%s start=%s end=%s",
-            lookback_hours,
+            "[coordinates] fetching file-backed coordinates scope=%s start=%s end=%s",
+            scope,
             start_dt.isoformat(),
             end_dt.isoformat(),
         )
         paths = _trip_points_to_api_paths(start_dt, end_dt)
         coordinate_count = sum(len(path) for path in paths)
         logger.debug(
-            "[coordinates] response paths=%s coordinates=%s lookback_hours=%s start=%s end=%s",
+            "[coordinates] response paths=%s coordinates=%s scope=%s start=%s end=%s",
             len(paths),
             coordinate_count,
-            lookback_hours,
+            scope,
             start_dt.isoformat(),
             end_dt.isoformat(),
         )
-        return jsonify(
-            {
-                "status": "success",
-                "count": coordinate_count,
-                "lookback_hours": lookback_hours,
-                "paths": paths,
-            }
-        )
+        return jsonify({"status": "success", "count": coordinate_count, **scope, "paths": paths})
 
     except Exception as e:
         logger.error(f"Error fetching coordinates: {str(e)}")

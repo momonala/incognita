@@ -1,5 +1,7 @@
 """Tests for data API utility functions."""
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from incognita.data_api import app, format_downtime
@@ -114,6 +116,93 @@ def test_coordinates_preserves_trip_segments(monkeypatch):
             },
         ],
     ]
+
+
+def test_coordinates_by_date_queries_that_local_day(monkeypatch):
+    """A date query covers exactly one local calendar day and echoes the date back."""
+    calls: dict[str, datetime] = {}
+
+    def fake_get_trip_points_for_date_range(start_dt, end_dt):
+        calls["start_dt"] = start_dt
+        calls["end_dt"] = end_dt
+        return [[[13.405, 52.52, 1735732800.0], [13.41, 52.53, 1735736400.0]]]
+
+    monkeypatch.setattr(
+        "incognita.data_api.get_trip_points_for_date_range", fake_get_trip_points_for_date_range
+    )
+
+    with app.test_client() as client:
+        response = client.get("/coordinates?date=2025-01-01")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["date"] == "2025-01-01"
+    assert payload["count"] == 2
+    assert "lookback_hours" not in payload
+
+    # Window is UTC (raw dirs are UTC-partitioned) but spans one local midnight-to-midnight day.
+    start_local = calls["start_dt"].astimezone()
+    end_local = calls["end_dt"].astimezone()
+    assert (start_local.year, start_local.month, start_local.day) == (2025, 1, 1)
+    assert (start_local.hour, start_local.minute) == (0, 0)
+    assert (end_local.year, end_local.month, end_local.day) == (2025, 1, 2)
+    assert (end_local.hour, end_local.minute) == (0, 0)
+
+
+def test_coordinates_today_clamps_window_to_now(monkeypatch):
+    """date=today must not ask for the remainder of the day, which has no data yet."""
+    calls: dict[str, datetime] = {}
+
+    def fake_get_trip_points_for_date_range(start_dt, end_dt):
+        calls["end_dt"] = end_dt
+        return None
+
+    monkeypatch.setattr(
+        "incognita.data_api.get_trip_points_for_date_range", fake_get_trip_points_for_date_range
+    )
+
+    with app.test_client() as client:
+        response = client.get("/coordinates?date=today")
+
+    assert response.status_code == 200
+    assert response.get_json()["date"] == datetime.now().strftime("%Y-%m-%d")
+    assert abs((datetime.now(timezone.utc) - calls["end_dt"]).total_seconds()) < 60
+
+
+def test_coordinates_by_date_with_no_data_is_empty_not_error(monkeypatch):
+    """An untracked day is a successful empty response, not a failure."""
+    monkeypatch.setattr("incognita.data_api.get_trip_points_for_date_range", lambda *_: None)
+
+    with app.test_client() as client:
+        response = client.get("/coordinates?date=2019-06-15")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "success", "count": 0, "date": "2019-06-15", "paths": []}
+
+
+def test_coordinates_future_date_returns_empty(monkeypatch):
+    """A day that has not started yet yields an empty window without hitting the loader."""
+    monkeypatch.setattr(
+        "incognita.data_api.get_trip_points_for_date_range",
+        lambda *_: pytest.fail("loader should not run for a future date"),
+    )
+    future = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d")
+
+    with app.test_client() as client:
+        response = client.get(f"/coordinates?date={future}")
+
+    assert response.status_code == 200
+    assert response.get_json()["count"] == 0
+
+
+@pytest.mark.parametrize("query", ["date=not-a-date", "date=2025-13-01", "date=2025-01-01&lookback_hours=24"])
+def test_coordinates_rejects_bad_date_queries(query: str):
+    """Malformed dates and date+lookback_hours together are client errors."""
+    with app.test_client() as client:
+        response = client.get(f"/coordinates?{query}")
+
+    assert response.status_code == 400
+    assert response.get_json()["status"] == "error"
 
 
 def test_motion_stats_returns_daily_summary(monkeypatch):

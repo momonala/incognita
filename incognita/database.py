@@ -28,7 +28,7 @@ def update_db(
     parsed = extract_properties_from_geojson(raw_geojson)
     df = pd.DataFrame(parsed)
     if df.empty:
-        logger.warning("No data to update db with %s", geojson_filename)
+        logger.debug("No data to update db with %s", geojson_filename)
         return
 
     if conn is not None:
@@ -39,7 +39,8 @@ def update_db(
         with sqlite3.connect(db_filename) as conn:
             df.to_sql(DB_NAME, conn, if_exists="append", index=False)
 
-    affected_dates = pd.to_datetime(df["timestamp"], utc=True).dt.strftime("%Y-%m-%d").unique().tolist()
+    # Timestamps are always UTC "%Y-%m-%dT%H:%M:%SZ", so the date is a plain prefix slice.
+    affected_dates = sorted({ts[:10] for ts in df["timestamp"]})
     from incognita.motion_stats import invalidate_motion_stats_cache
 
     invalidate_motion_stats_cache(affected_dates, db_filename)
