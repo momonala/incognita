@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pandas as pd
 import requests
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
 
-from incognita.config import DASHBOARD_PORT, GPS_MAP_FILENAME, VISITED_MAP_FILENAME
+from incognita.config import DASHBOARD_PORT, GPS_MAP_FILENAME, SPYGLASS_DASHBOARD_URL, VISITED_MAP_FILENAME
 from incognita.countries import (
     get_countries_df,
     get_countries_visited,
@@ -38,7 +38,7 @@ from incognita.health_database import (
     get_health_meta,
     load_metric_df,
 )
-from incognita.observability import configure_logging
+from incognita.observability import configure_logging, metrics
 from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX, google_sheets_document_url
 from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
 
@@ -81,6 +81,27 @@ def favicon():
 def index():
     """Serve home page."""
     return render_template("index.html")
+
+
+@app.route("/observability")
+def observability():
+    """Redirect to the Spyglass-hosted observability dashboard."""
+    return redirect(SPYGLASS_DASHBOARD_URL)
+
+
+@app.before_request
+def _spyglass_request_start():
+    """Record request start time for API latency metrics."""
+    request.environ["_spyglass_start"] = time.perf_counter()
+
+
+@app.after_request
+def _spyglass_request_end(response):
+    """Emit per-endpoint request latency."""
+    endpoint = request.endpoint or "unknown"
+    elapsed_ms = (time.perf_counter() - request.environ.get("_spyglass_start", time.perf_counter())) * 1000
+    metrics.timing(f"api.{endpoint}.latency_ms", elapsed_ms)
+    return response
 
 
 def _flights_table_records(flights_df):

@@ -16,6 +16,8 @@ FLIGHTS_MAP_FILENAME = _tool_config["flights_map_filename"]
 GPS_MAP_FILENAME = _tool_config["gps_map_filename"]
 VISITED_MAP_FILENAME = _tool_config["visited_map_filename"]
 DEFAULT_LOCATION = _tool_config["default_location"]
+SPYGLASS_HOST = _tool_config["spyglass_host"]
+SPYGLASS_DASHBOARD_URL = _tool_config["spyglass_dashboard_url"]
 
 
 # fmt: off
@@ -29,6 +31,10 @@ def config_cli(
     gps_map: bool = typer.Option(False, "--gps-map", help=GPS_MAP_FILENAME),
     visited_map: bool = typer.Option(False, "--visited-map", help=VISITED_MAP_FILENAME),
     default_location: bool = typer.Option(False, "--default-location", help=str(DEFAULT_LOCATION)),
+    spyglass_host: bool = typer.Option(False, "--spyglass-host", help=SPYGLASS_HOST),
+    spyglass_dashboard_url: bool = typer.Option(
+        False, "--spyglass-dashboard-url", help=SPYGLASS_DASHBOARD_URL
+    ),
 ) -> None:
 # fmt: on
     if all:
@@ -40,6 +46,8 @@ def config_cli(
         typer.echo(f"gps_map_filename={GPS_MAP_FILENAME}")
         typer.echo(f"visited_map_filename={VISITED_MAP_FILENAME}")
         typer.echo(f"default_location={DEFAULT_LOCATION}")
+        typer.echo(f"spyglass_host={SPYGLASS_HOST}")
+        typer.echo(f"spyglass_dashboard_url={SPYGLASS_DASHBOARD_URL}")
         return
 
     param_map = {
@@ -51,6 +59,8 @@ def config_cli(
         gps_map: GPS_MAP_FILENAME,
         visited_map: VISITED_MAP_FILENAME,
         default_location: DEFAULT_LOCATION,
+        spyglass_host: SPYGLASS_HOST,
+        spyglass_dashboard_url: SPYGLASS_DASHBOARD_URL,
     }
 
     for is_set, value in param_map.items():

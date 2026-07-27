@@ -32,6 +32,7 @@ dependencies = [
     "ruff>=0.14.10",
     "schedule>=1.2.2",
     "shapely>=2.0.0,<3.0.0",
+    "spyglass",
     "typer>=0.9.0",
     "tqdm>=4.0.0,<5.0.0",
     "vulture>=2.14",
@@ -45,6 +46,9 @@ flights_map_filename = "static/flights_pydeck.html"
 gps_map_filename = "static/gps_pydeck.html"
 visited_map_filename = "static/visited_pydeck.html"
 default_location = [52.52, 13.405]
+# Spyglass observability (local server: uv run spyglass serve)
+spyglass_host = "localhost:5013"
+spyglass_dashboard_url = "https://spyglass.mnalavadi.org/dashboard/incognita"
 
 [build-system]
 requires = ["hatchling"]
@@ -62,6 +66,9 @@ health = "incognita.scripts.health_step_duplicates:main"
 
 [tool.uv]
 exclude-newer = "1 week"
+
+[tool.uv.sources]
+spyglass = { git = "https://github.com/momonala/spyglass.git", rev = "main" }
 
 [tool.black]
 line-length = 110

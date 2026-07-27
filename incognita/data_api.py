@@ -4,6 +4,7 @@ import bisect
 import hashlib
 import json
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -11,10 +12,11 @@ from functools import wraps
 from pathlib import Path
 
 import requests
-from flask import Flask, Response, jsonify, request
+import schedule
+from flask import Flask, Response, jsonify, redirect, request
 from pydantic import ValidationError
 
-from incognita.config import DASHBOARD_PORT
+from incognita.config import DASHBOARD_PORT, SPYGLASS_DASHBOARD_URL
 from incognita.data_models import (
     DailyMotionStats,
     HealthDump,
@@ -22,12 +24,17 @@ from incognita.data_models import (
     HealthKitBatch,
     MotionStatsRange,
 )
-from incognita.database import update_db
-from incognita.gps_trips_renderer import get_trip_points_for_date_range
-from incognita.health_database import get_daily_health_dump, get_health_dump_range, insert_health_batch
+from incognita.database import DB_FILE, update_db
+from incognita.gps_trips_renderer import RAW_DATA_ROOT, get_trip_points_for_date_range
+from incognita.health_database import (
+    HEALTH_DB_FILE,
+    get_daily_health_dump,
+    get_health_dump_range,
+    insert_health_batch,
+)
 from incognita.motion_stats import get_daily_motion_stats, get_motion_stats_range
-from incognita.observability import configure_logging
-from incognita.utils import get_ip_address
+from incognita.observability import configure_logging, metrics
+from incognita.utils import BYTES_PER_MB, get_ip_address
 from incognita.values import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 
 logger = logging.getLogger(__name__)
@@ -150,6 +157,65 @@ def root():
 @app.route("/status", methods=["GET"])
 def status():
     return jsonify({"status": "ok"})
+
+
+@app.route("/observability", methods=["GET"])
+def observability():
+    """Redirect to the Spyglass-hosted observability dashboard."""
+    return redirect(SPYGLASS_DASHBOARD_URL)
+
+
+@app.before_request
+def _spyglass_request_start():
+    """Record request start time for API latency metrics."""
+    request.environ["_spyglass_start"] = time.perf_counter()
+
+
+@app.after_request
+def _spyglass_request_end(response):
+    """Emit per-endpoint request latency."""
+    endpoint = request.endpoint or "unknown"
+    elapsed_ms = (time.perf_counter() - request.environ.get("_spyglass_start", time.perf_counter())) * 1000
+    metrics.timing(f"api.{endpoint}.latency_ms", elapsed_ms)
+    return response
+
+
+def _count_files(root: Path) -> int:
+    """Recursively count files under root via scandir (avoids per-entry stat calls, unlike glob/Path.is_file)."""
+    count = 0
+    dirs = [root]
+    while dirs:
+        with os.scandir(dirs.pop()) as entries:
+            for entry in entries:
+                if entry.is_dir(follow_symlinks=False):
+                    dirs.append(entry.path)
+                else:
+                    count += 1
+    return count
+
+
+def report_storage_metrics() -> None:
+    """Emit raw-data file count and total DB size (MB) to spyglass. Scheduled hourly from main()."""
+    file_count = _count_files(RAW_DATA_ROOT)
+    db_size_mb = (
+        sum(
+            p.stat().st_size
+            for db_file in (DB_FILE, HEALTH_DB_FILE)
+            for p in Path(db_file).parent.glob(f"{Path(db_file).name}*")
+        )
+        / BYTES_PER_MB
+    )
+    metrics.gauge("raw_data_file_count", file_count)
+    metrics.gauge("db_size_mb", db_size_mb)
+    logger.info("Storage metrics: raw_data_file_count=%d db_size_mb=%.1f", file_count, db_size_mb)
+
+
+def storage_metrics_scheduler():
+    schedule.every().hour.do(report_storage_metrics)
+    report_storage_metrics()
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
 
 
 def watchdog():
@@ -319,6 +385,8 @@ def dump():
     # Parse and format JSON with indentation
     json_data = json.loads(data.decode())
     locations = json_data.get("locations", [])
+    metrics.increment("files_received")
+    metrics.gauge("locations_count", len(locations))
 
     # Get timestamp from first location to determine directory structure
     first_timestamp = locations[0]["properties"]["timestamp"]
@@ -339,9 +407,11 @@ def dump():
         logger.debug("Wrote file_name=%s", file_name)
         update_db(str(file_name))
         wrote_file = True
+        metrics.increment("wrote_file")
     else:
         logging.warning(f"File already exists, skipping: {file_name=}")
         wrote_file = False
+        metrics.increment("duplicate_skipped")
     _log_dump_target_diagnostics(target_path, file_name, len(locations), wrote_file)
     return jsonify({"result": "ok"})
 
@@ -353,8 +423,10 @@ def ios_dump():
     try:
         batch = HealthKitBatch.model_validate_json(request.get_data())
     except ValidationError as e:
+        metrics.increment("validation_error")
         return jsonify({"result": "error", "message": str(e)}), 400
 
+    metrics.increment("batches_received")
     inserted, skipped = insert_health_batch(batch)
     logger.debug(
         "ios-dump batch_index=%s inserted=%s skipped=%s",
@@ -554,6 +626,7 @@ def get_coordinates():
 def main():
     configure_logging()
     threading.Thread(target=watchdog, daemon=True).start()
+    threading.Thread(target=storage_metrics_scheduler, daemon=True).start()
     logger.info(f"Running server at http://{get_ip_address()}:{overland_port}")
     app.run(host="0.0.0.0", port=overland_port)
 

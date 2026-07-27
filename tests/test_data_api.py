@@ -1,10 +1,15 @@
 """Tests for data API utility functions."""
 
+import json
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
+from incognita import data_api
+from incognita.config import SPYGLASS_DASHBOARD_URL
 from incognita.data_api import app, format_downtime
+from incognita.utils import BYTES_PER_MB
 
 
 @pytest.mark.parametrize(
@@ -335,3 +340,88 @@ def test_alerts_muted_during_quiet_hours():
 
     assert data_api.alerts_muted(datetime(2025, 1, 1, 2, 0)) == "sleepy time"
     assert data_api.alerts_muted(datetime(2025, 1, 1, 12, 0)) is None
+
+
+def _dump_payload():
+    return {
+        "locations": [
+            {
+                "geometry": {"coordinates": [-122.4194, 37.7749]},
+                "properties": {"timestamp": "2024-01-01T12:00:00Z", "horizontal_accuracy": 10.0},
+            }
+        ]
+    }
+
+
+@patch("incognita.data_api.metrics")
+def test_dump_reports_received_and_written(mock_metrics, monkeypatch, tmp_path):
+    """A new file received via /dump reports files_received, locations_count, and wrote_file."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("incognita.data_api.update_db", lambda filename: None)
+
+    with app.test_client() as client:
+        response = client.post("/dump", data=json.dumps(_dump_payload()), content_type="application/json")
+
+    assert response.status_code == 200
+    mock_metrics.increment.assert_any_call("files_received")
+    mock_metrics.gauge.assert_any_call("locations_count", 1)
+    mock_metrics.increment.assert_any_call("wrote_file")
+
+
+@patch("incognita.data_api.metrics")
+def test_dump_reports_duplicate_skipped(mock_metrics, monkeypatch, tmp_path):
+    """Posting the same content twice reports duplicate_skipped on the second dump."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("incognita.data_api.update_db", lambda filename: None)
+    payload = json.dumps(_dump_payload())
+
+    with app.test_client() as client:
+        client.post("/dump", data=payload, content_type="application/json")
+        mock_metrics.reset_mock()
+        client.post("/dump", data=payload, content_type="application/json")
+
+    mock_metrics.increment.assert_any_call("duplicate_skipped")
+
+
+def test_observability_redirects_to_spyglass_dashboard():
+    with app.test_client() as client:
+        response = client.get("/observability", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == SPYGLASS_DASHBOARD_URL
+
+
+def test_count_files_counts_nested_files_only(tmp_path):
+    """Verify _count_files recurses through subdirectories and counts only files."""
+    (tmp_path / "2025" / "01" / "01" / "12").mkdir(parents=True)
+    (tmp_path / "2025" / "01" / "01" / "12" / "a.geojson").write_text("{}")
+    (tmp_path / "2025" / "01" / "01" / "12" / "b.geojson").write_text("{}")
+    (tmp_path / "2025" / "01" / "02").mkdir(parents=True)
+    (tmp_path / "2025" / "01" / "02" / "c.geojson").write_text("{}")
+
+    assert data_api._count_files(tmp_path) == 3
+
+
+@patch("incognita.data_api.metrics")
+def test_report_storage_metrics_reports_file_count_and_db_size(mock_metrics, monkeypatch, tmp_path):
+    """Verify report_storage_metrics gauges raw-data file count and combined DB size in MB."""
+    raw_data_root = tmp_path / "incognita_raw_data" / "2025" / "01" / "01" / "12"
+    raw_data_root.mkdir(parents=True)
+    (raw_data_root / "a.geojson").write_text("{}")
+    (raw_data_root / "b.geojson").write_text("{}")
+    monkeypatch.setattr(data_api, "RAW_DATA_ROOT", tmp_path / "incognita_raw_data")
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    geo_db = data_dir / "geo_data.db"
+    geo_db.write_bytes(b"x" * BYTES_PER_MB)
+    health_db = data_dir / "health_data.db"
+    health_db.write_bytes(b"x" * BYTES_PER_MB)
+    (data_dir / "health_data.db-wal").write_bytes(b"x" * (BYTES_PER_MB // 2))
+    monkeypatch.setattr(data_api, "DB_FILE", str(geo_db))
+    monkeypatch.setattr(data_api, "HEALTH_DB_FILE", str(health_db))
+
+    data_api.report_storage_metrics()
+
+    mock_metrics.gauge.assert_any_call("raw_data_file_count", 2)
+    mock_metrics.gauge.assert_any_call("db_size_mb", pytest.approx(2.5))

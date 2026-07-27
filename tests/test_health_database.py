@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
@@ -116,6 +117,38 @@ def test_insert_health_batch_dedupes_by_uuid(health_db):
     assert row == (1,)
 
 
+@patch("incognita.health_database.metrics")
+def test_insert_health_batch_reports_metrics(mock_metrics, health_db):
+    sample = _sample(type="Distance", uuid="EEE", value=42.0, unit="m", deviceName=None, metadata={})
+    batch = HealthKitBatch.model_validate({"batchIndex": 1, "samples": [sample]})
+
+    inserted, skipped = insert_health_batch(batch, db_filename=health_db)
+
+    assert inserted == 1
+    assert skipped == 0
+    mock_metrics.increment.assert_any_call("samples_received", 1)
+    mock_metrics.increment.assert_any_call("inserted", 1)
+    mock_metrics.increment.assert_any_call("success")
+    assert mock_metrics.increment.call_args_list == [
+        (("samples_received", 1), {}),
+        (("inserted", 1), {}),
+        (("success",), {}),
+    ]
+
+
+@patch("incognita.health_database.metrics")
+def test_insert_health_batch_reports_skipped(mock_metrics, health_db):
+    sample = _sample(type="Distance", uuid="FFF", value=1.0, unit="m", deviceName=None, metadata={})
+    first = HealthKitBatch.model_validate({"batchIndex": 1, "samples": [sample]})
+    second = HealthKitBatch.model_validate({"batchIndex": 2, "samples": [sample]})
+
+    insert_health_batch(first, db_filename=health_db)
+    mock_metrics.reset_mock()
+    insert_health_batch(second, db_filename=health_db)
+
+    mock_metrics.increment.assert_any_call("skipped", 1)
+
+
 def test_ios_dump_endpoint(monkeypatch):
     monkeypatch.setattr("incognita.data_api.insert_health_batch", lambda batch: (1, 0))
 
@@ -150,6 +183,27 @@ def test_ios_dump_rejects_invalid_payload():
 
     assert response.status_code == 400
     assert response.get_json()["result"] == "error"
+
+
+@patch("incognita.data_api.metrics")
+def test_ios_dump_reports_batches_received(mock_metrics, monkeypatch):
+    monkeypatch.setattr("incognita.data_api.insert_health_batch", lambda batch: (1, 0))
+    payload = {"batchIndex": 1, "samples": [_sample()]}
+
+    with app.test_client() as client:
+        client.post("/ios-dump", data=json.dumps(payload), content_type="application/json")
+
+    mock_metrics.increment.assert_any_call("batches_received")
+
+
+@patch("incognita.data_api.metrics")
+def test_ios_dump_reports_validation_error(mock_metrics):
+    payload = {"batchIndex": 1, "samples": [_sample(type="Unknown")]}
+
+    with app.test_client() as client:
+        client.post("/ios-dump", data=json.dumps(payload), content_type="application/json")
+
+    mock_metrics.increment.assert_called_once_with("validation_error")
 
 
 def test_insert_creates_all_tables(health_db):

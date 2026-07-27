@@ -62,7 +62,7 @@ def _airport_to_coord(airport_iata_code: str) -> tuple[float, float]:
     return round(airport["lon"], COORD_DECIMALS), round(airport["lat"], COORD_DECIMALS)
 
 
-def airport_iata_to_coords_departure(flight_row) -> tuple[float, float]:
+def _airport_iata_to_coords_departure(flight_row: pd.Series) -> tuple[float, float]:
     try:
         coords = _airport_to_coord(flight_row["departure_airport"])
     except KeyError:
@@ -70,7 +70,7 @@ def airport_iata_to_coords_departure(flight_row) -> tuple[float, float]:
     return coords
 
 
-def _airport_iata_to_coords_arrival(flight_row) -> tuple[float, float]:
+def _airport_iata_to_coords_arrival(flight_row: pd.Series) -> tuple[float, float]:
     try:
         coords = _airport_to_coord(flight_row["arrival_airport"])
     except KeyError:
@@ -78,7 +78,7 @@ def _airport_iata_to_coords_arrival(flight_row) -> tuple[float, float]:
     return coords
 
 
-def _distance_between_airports_km(flight_row) -> float:
+def _distance_between_airports_km(flight_row: pd.Series) -> float:
     lon_orig, lat_orig = flight_row["orig_coords"]
     lon_dest, lat_dest = flight_row["dest_coords"]
     dist_meters = get_haversine_dist(lat_orig, lon_orig, lat_dest, lon_dest)
@@ -102,7 +102,7 @@ def get_flights_df() -> pd.DataFrame:
     ]
     flights_df["departure_airport"] = flights_df["Departure Airport"].apply(lambda s: s.strip())
     flights_df["arrival_airport"] = flights_df["Arrival Airport"].apply(lambda s: s.strip())
-    flights_df["orig_coords"] = flights_df.apply(airport_iata_to_coords_departure, axis=1)
+    flights_df["orig_coords"] = flights_df.apply(_airport_iata_to_coords_departure, axis=1)
     flights_df["dest_coords"] = flights_df.apply(_airport_iata_to_coords_arrival, axis=1)
     flights_df["Distance km"] = flights_df.apply(_distance_between_airports_km, axis=1)
     flights_df["Date"] = pd.to_datetime(flights_df["Date"], format="mixed")

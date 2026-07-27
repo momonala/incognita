@@ -2,6 +2,7 @@ import hashlib
 import logging
 import os
 import platform
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -649,4 +650,4 @@ if __name__ == "__main__":
     )
     if paths is not None:
         render_trips_to_file(paths, gps_map_filename, DEFAULT_MAP_BOX)
-        os.system(f"open {gps_map_filename}")
+        subprocess.run(["open", str(gps_map_filename)], check=True)

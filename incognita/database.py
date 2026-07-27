@@ -4,6 +4,8 @@ import sqlite3
 
 import pandas as pd
 
+from incognita.observability import metrics
+
 logger = logging.getLogger(__name__)
 
 DB_FILE = "data/geo_data.db"
@@ -24,20 +26,27 @@ def update_db(
     raw_geojson = read_geojson_file(geojson_filename)
     if not raw_geojson:
         logger.warning("Failed parsing file %s", geojson_filename)
+        metrics.increment("error", tags={"kind": "parse_failure"})
         return
     parsed = extract_properties_from_geojson(raw_geojson)
     df = pd.DataFrame(parsed)
     if df.empty:
         logger.debug("No data to update db with %s", geojson_filename)
+        metrics.increment("error", tags={"kind": "empty"})
         return
 
-    if conn is not None:
-        # Use provided connection
-        df.to_sql(DB_NAME, conn, if_exists="append", index=False)
-    else:
-        # Create new connection
-        with sqlite3.connect(db_filename) as conn:
+    try:
+        if conn is not None:
+            # Use provided connection
             df.to_sql(DB_NAME, conn, if_exists="append", index=False)
+        else:
+            # Create new connection
+            with sqlite3.connect(db_filename) as conn:
+                df.to_sql(DB_NAME, conn, if_exists="append", index=False)
+    except Exception:
+        metrics.increment("error", tags={"kind": "sqlite_error"})
+        raise
+    metrics.increment("success")
 
     # Timestamps are always UTC "%Y-%m-%dT%H:%M:%SZ", so the date is a plain prefix slice.
     affected_dates = sorted({ts[:10] for ts in df["timestamp"]})

@@ -57,6 +57,7 @@ flowchart LR
 - uv (Python package manager)
 - phone with Trace or Overland installed for GPS dumps
 - Telegram bot token (optional, for alerts)
+- [spyglass](https://github.com/momonala/spyglass) server running locally (optional, for metrics — `cd ../spyglass && uv run spyglass serve`)
 
 ## Installation
 
@@ -132,7 +133,7 @@ incognita/
 │   ├── values.py               # Configuration constants
 │   └── scripts/
 │       ├── refresh_db.py       # Rebuild database from raw files
-│       ├── plot_recent.py      # Plot recent GPS data
+│       ├── health_step_duplicates.py  # Find days with step data from multiple hardware versions
 │       └── generate_video.py   # Generate video from GPS tracks
 ├── ../incognita_raw_data/                # Organized GeoJSON files (sibling to repo)
 │   └── YYYY/MM/DD/HH/          # Hierarchical structure
@@ -164,6 +165,7 @@ incognita/
 | `/health-data` | GET | Daily HealthKit summary (steps, distance, energy, flights climbed) |
 | `/motion-stats` | GET | Daily GPS motion summary from SQLite (distance, speed, altitude, by motion type) |
 | `/coordinates` | GET | Fetch simplified coordinates from raw GPS files |
+| `/observability` | GET | Redirect to the Spyglass-hosted observability dashboard |
 
 ### Web App (`:5004`)
 
@@ -176,6 +178,7 @@ incognita/
 | `/live` | GET | Live location map with animated day-path replay |
 | `/live/current` | GET | JSON snapshot of current location, GPS fix time, and last heartbeat time |
 | `/internal/heartbeat` | POST | Internal endpoint; receives forwarded heartbeat from data API to update last-seen time |
+| `/observability` | GET | Redirect to the Spyglass-hosted observability dashboard |
 
 ### `/coordinates`
 
@@ -306,14 +309,31 @@ This script:
 
 ## Background Jobs
 
-Data API server includes watchdog thread:
+Data API server includes two background threads:
 
 | Schedule | Task |
 |----------|------|
-| Continuous | Monitor heartbeat endpoint |
+| Continuous | Monitor heartbeat endpoint (watchdog) |
 | Escalating | Send Telegram alerts if no heartbeat (1m, 5m, 30m, 60m) |
 | Recovery | Reset backoff to 1m when the heartbeat returns (no message sent) |
 | Muting | Suppress alerts during quiet hours (11pm–7am) or an active `/snooze` window |
+| Hourly | Report raw-data file count and total DB size to spyglass (`storage_metrics_scheduler`, via the `schedule` library) |
+
+## Observability
+
+Both Flask servers report metrics to [spyglass](https://github.com/momonala/spyglass) under project `incognita` (`SPYGLASS_HOST` / `SPYGLASS_DASHBOARD_URL` in `pyproject.toml [tool.config]`). Metrics degrade silently if no spyglass server is reachable.
+
+| Metric | Where | What it tracks |
+|--------|-------|----------------|
+| `<func>.duration_ms`, `<func>.mem_delta_mb` | `incognita.observability.timed` | Wall time and RSS memory delta for expensive functions (`gps_df_to_deck_map`, `_get_month_trips_cached_impl`, `get_trip_points_for_date_range`, `get_trips_for_date_range`) |
+| `update_db.success` / `update_db.error` (tagged `kind`) | `database.update_db` | GPS ingest-to-SQLite success rate, both live `/dump` writes and bulk `refresh-db` runs |
+| `dump.files_received`, `dump.locations_count`, `dump.wrote_file`, `dump.duplicate_skipped` | `data_api.dump` | Count of GeoJSON files received from Overland and whether each was new or a duplicate |
+| `ios_dump.batches_received`, `ios_dump.validation_error` | `data_api.ios_dump` | Count of HealthKit batches received and schema-validation failures |
+| `insert_health_batch.samples_received`, `.inserted`, `.skipped`, `.success` / `.error` | `health_database.insert_health_batch` | HealthKit sample ingest-to-SQLite success rate |
+| `api.<endpoint>.latency_ms` | both apps' `before_request`/`after_request` hooks | Per-route request latency |
+| `report_storage_metrics.raw_data_file_count`, `.db_size_mb` | `data_api.report_storage_metrics` | File count under `incognita_raw_data/` and combined size (MB) of `geo_data.db` + `health_data.db` (with WAL/SHM sidecars); reported hourly |
+
+Visit `/observability` on either server to open the spyglass dashboard.
 
 ## Development Commands
 
@@ -325,8 +345,9 @@ black . && isort .
 uv run refresh-db
 # or: python -m incognita.scripts.refresh_db
 
-# Plot recent GPS data
-python -m incognita.scripts.plot_recent
+# Find days with step data from multiple hardware versions
+uv run health
+# or: python -m incognita.scripts.health_step_duplicates
 ```
 
 ## Deployment

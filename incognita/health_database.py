@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from incognita.data_models import HealthKitBatch, HealthKitExportType
+from incognita.observability import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ def insert_health_batch(
 ) -> tuple[int, int]:
     """Insert validated samples into per-type tables. Returns (inserted, skipped)."""
     Path(db_filename).parent.mkdir(parents=True, exist_ok=True)
+    metrics.increment("samples_received", len(batch.samples))
 
     rows_by_table: dict[str, list[tuple]] = {
         export_type.table_name: [] for export_type in HealthKitExportType
@@ -73,24 +75,32 @@ def insert_health_batch(
         rows_by_table[sample.type.table_name].append(sample.sqlite_row(batch.batch_index))
 
     inserted = 0
-    with sqlite3.connect(db_filename) as conn:
-        conn.execute("PRAGMA journal_mode=WAL")
-        for export_type in HealthKitExportType:
-            conn.execute(_CREATE_TABLE_SQL.format(table=export_type.table_name))
+    try:
+        with sqlite3.connect(db_filename) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            for export_type in HealthKitExportType:
+                conn.execute(_CREATE_TABLE_SQL.format(table=export_type.table_name))
 
-        for table_name, rows in rows_by_table.items():
-            if not rows:
-                continue
-            before = conn.total_changes
-            conn.executemany(_INSERT_SQL.format(table=table_name), rows)
-            inserted += conn.total_changes - before
-        conn.commit()
+            for table_name, rows in rows_by_table.items():
+                if not rows:
+                    continue
+                before = conn.total_changes
+                conn.executemany(_INSERT_SQL.format(table=table_name), rows)
+                inserted += conn.total_changes - before
+            conn.commit()
+    except sqlite3.Error:
+        metrics.increment("error", tags={"kind": "sqlite_error"})
+        raise
 
     if inserted > 0:
         affected_dates = {sample.start[:10] for sample in batch.samples}
         invalidate_health_dump_cache(sorted(affected_dates), db_filename)
 
     skipped = len(batch.samples) - inserted
+    metrics.increment("inserted", inserted)
+    if skipped:
+        metrics.increment("skipped", skipped)
+    metrics.increment("success")
     logger.debug(
         "health_db batch_index=%s inserted=%s skipped=%s db_filename=%s",
         batch.batch_index,

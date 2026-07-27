@@ -15,7 +15,7 @@ _abs = Path(__file__).parents[2] / "incognita_raw_data"
 root_dir = _abs if _abs.exists() else Path("..", "incognita_raw_data")
 
 
-def process_file(file_path):
+def process_file(file_path: Path) -> bool:
     """Process a single file and update the database."""
     try:
         update_db(str(file_path), DB_FILE)
@@ -25,7 +25,7 @@ def process_file(file_path):
         return False
 
 
-def main():
+def main() -> None:
     db_file = str(DB_FILE)
 
     if os.path.exists(db_file):
