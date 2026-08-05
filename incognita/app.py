@@ -95,12 +95,18 @@ def _spyglass_request_start():
     request.environ["_spyglass_start"] = time.perf_counter()
 
 
+_TRACKED_ENDPOINTS = {"live", "gps"}
+
+
 @app.after_request
 def _spyglass_request_end(response):
     """Emit per-endpoint request latency."""
     endpoint = request.endpoint or "unknown"
-    elapsed_ms = (time.perf_counter() - request.environ.get("_spyglass_start", time.perf_counter())) * 1000
-    metrics.timing(f"api.{endpoint}.latency_ms", elapsed_ms)
+    if endpoint in _TRACKED_ENDPOINTS:
+        elapsed_ms = (
+            time.perf_counter() - request.environ.get("_spyglass_start", time.perf_counter())
+        ) * 1000
+        metrics.timing(f"api.{endpoint}.latency_ms", elapsed_ms)
     return response
 
 

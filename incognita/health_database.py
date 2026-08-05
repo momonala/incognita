@@ -66,7 +66,6 @@ def insert_health_batch(
 ) -> tuple[int, int]:
     """Insert validated samples into per-type tables. Returns (inserted, skipped)."""
     Path(db_filename).parent.mkdir(parents=True, exist_ok=True)
-    metrics.increment("samples_received", len(batch.samples))
 
     rows_by_table: dict[str, list[tuple]] = {
         export_type.table_name: [] for export_type in HealthKitExportType
@@ -74,6 +73,7 @@ def insert_health_batch(
     for sample in batch.samples:
         rows_by_table[sample.type.table_name].append(sample.sqlite_row(batch.batch_index))
 
+    metrics.increment("samples_received", len(batch.samples))
     inserted = 0
     try:
         with sqlite3.connect(db_filename) as conn:
