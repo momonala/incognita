@@ -425,3 +425,14 @@ def test_report_storage_metrics_reports_file_count_and_db_size(mock_metrics, mon
 
     mock_metrics.gauge.assert_any_call("raw_data_file_count", 2)
     mock_metrics.gauge.assert_any_call("db_size_mb", pytest.approx(2.5))
+
+
+@patch("incognita.data_api.metrics")
+def test_report_process_metrics_reports_rss_and_gc_objects(mock_metrics):
+    """Verify report_process_metrics gauges a positive RSS and GC-tracked object count."""
+    data_api.report_process_metrics()
+
+    gauged = {call.args[0]: call.args[1] for call in mock_metrics.gauge.call_args_list}
+    assert gauged.keys() == {"rss_mb", "gc_objects"}
+    assert gauged["rss_mb"] > 0
+    assert gauged["gc_objects"] > 0
