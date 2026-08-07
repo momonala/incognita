@@ -1,6 +1,7 @@
 """Basic HTTP server to receive and store GPS incognita_raw_data from iPhone Overland app."""
 
 import bisect
+import gc
 import hashlib
 import json
 import logging
@@ -11,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 
+import psutil
 import requests
 import schedule
 from flask import Flask, Response, jsonify, redirect, request
@@ -213,12 +215,31 @@ def report_storage_metrics() -> None:
     )
     metrics.gauge("raw_data_file_count", file_count)
     metrics.gauge("db_size_mb", db_size_mb)
-    logger.info("Storage metrics: raw_data_file_count=%d db_size_mb=%.1f", file_count, db_size_mb)
 
 
-def storage_metrics_scheduler():
+def report_process_metrics() -> None:
+    """Emit process heap metrics to spyglass. Scheduled hourly from main().
+
+    The two gauges are only meaningful read together. A rising ``rss_mb`` has two very
+    different causes: real object retention, which moves ``gc_objects`` with it, and
+    allocator fragmentation, where freed memory is never returned to the OS and
+    ``gc_objects`` stays flat. Splitting those is the whole point of sampling both.
+
+    ``gc.get_objects()`` materialises a list of every tracked object, so cost scales
+    with heap size: ~3ms at 142k objects on the import graph alone. Cheap hourly,
+    but re-measure before sampling it anywhere near per-request.
+    """
+    rss_mb = psutil.Process().memory_info().rss / BYTES_PER_MB
+    gc_objects = len(gc.get_objects())
+    metrics.gauge("rss_mb", rss_mb)
+    metrics.gauge("gc_objects", gc_objects)
+
+
+def metrics_scheduler():
     schedule.every().hour.do(report_storage_metrics)
+    schedule.every().hour.do(report_process_metrics)
     report_storage_metrics()
+    report_process_metrics()
     while True:
         schedule.run_pending()
         time.sleep(60)
@@ -440,7 +461,6 @@ def ios_dump():
         inserted,
         skipped,
     )
-    logger.info(f"ios-dump batch_index={batch.batch_index} inserted={inserted} skipped={skipped}")
     return jsonify({"result": "ok", "inserted": inserted, "skipped": skipped})
 
 
@@ -632,7 +652,7 @@ def get_coordinates():
 def main():
     configure_logging()
     threading.Thread(target=watchdog, daemon=True).start()
-    threading.Thread(target=storage_metrics_scheduler, daemon=True).start()
+    threading.Thread(target=metrics_scheduler, daemon=True).start()
     logger.info(f"Running server at http://{get_ip_address()}:{overland_port}")
     app.run(host="0.0.0.0", port=overland_port)
 

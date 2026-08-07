@@ -317,7 +317,7 @@ Data API server includes two background threads:
 | Escalating | Send Telegram alerts if no heartbeat (1m, 5m, 30m, 60m) |
 | Recovery | Reset backoff to 1m when the heartbeat returns (no message sent) |
 | Muting | Suppress alerts during quiet hours (11pm–7am) or an active `/snooze` window |
-| Hourly | Report raw-data file count and total DB size to spyglass (`storage_metrics_scheduler`, via the `schedule` library) |
+| Hourly | Report raw-data file count, total DB size, process RSS and GC object count to spyglass (`metrics_scheduler`, via the `schedule` library) |
 
 ## Observability
 
@@ -332,6 +332,7 @@ Both Flask servers report metrics to [spyglass](https://github.com/momonala/spyg
 | `insert_health_batch.samples_received`, `.inserted`, `.skipped`, `.success` / `.error` | `health_database.insert_health_batch` | HealthKit sample ingest-to-SQLite success rate |
 | `api.<endpoint>.latency_ms` | both apps' `before_request`/`after_request` hooks | Per-route request latency |
 | `report_storage_metrics.raw_data_file_count`, `.db_size_mb` | `data_api.report_storage_metrics` | File count under `incognita_raw_data/` and combined size (MB) of `geo_data.db` + `health_data.db` (with WAL/SHM sidecars); reported hourly |
+| `report_process_metrics.rss_mb`, `.gc_objects` | `data_api.report_process_metrics` | Process resident set (MB) and GC-tracked object count, reported hourly. Only meaningful read together: both climbing means real object retention, `rss_mb` climbing alone means allocator fragmentation |
 
 Visit `/observability` on either server to open the spyglass dashboard.
 
