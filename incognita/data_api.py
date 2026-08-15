@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -217,6 +218,22 @@ def report_storage_metrics() -> None:
     metrics.gauge("db_size_mb", db_size_mb)
 
 
+_JOBLIB_CACHE_ROOT = Path(".cache/incognita/gps_trips_renderer/_get_month_trips_cached_impl")
+_JOBLIB_CACHE_MAX_ENTRIES = 24
+
+
+def _evict_old_cache_entries() -> None:
+    """Keep only the N most-recently-accessed joblib cache entries."""
+    if not _JOBLIB_CACHE_ROOT.exists():
+        return
+    entries = sorted(_JOBLIB_CACHE_ROOT.iterdir(), key=lambda p: p.stat().st_atime, reverse=True)
+    for old_entry in entries[_JOBLIB_CACHE_MAX_ENTRIES:]:
+        shutil.rmtree(old_entry, ignore_errors=True)
+    evicted = max(0, len(entries) - _JOBLIB_CACHE_MAX_ENTRIES)
+    if evicted:
+        logger.info("[cache-evict] removed %d old joblib entries", evicted)
+
+
 def report_process_metrics() -> None:
     """Emit process heap metrics to spyglass. Scheduled hourly from main().
 
@@ -238,8 +255,10 @@ def report_process_metrics() -> None:
 def metrics_scheduler():
     schedule.every().hour.do(report_storage_metrics)
     schedule.every().hour.do(report_process_metrics)
+    schedule.every().hour.do(_evict_old_cache_entries)
     report_storage_metrics()
     report_process_metrics()
+    _evict_old_cache_entries()
     while True:
         schedule.run_pending()
         time.sleep(60)
