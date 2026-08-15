@@ -5,6 +5,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from incognita.database import DB_FILE, DB_NAME
@@ -245,7 +246,8 @@ def _aggregate_motion_stats(day_points: pd.DataFrame, date: str) -> dict:
         return _build_stats_dict(date, motion_type)
 
     _apply_segment_totals_by_motion(segments, motion_type)
-    speeds = segments["speed"].dropna()
+    raw = segments["speed"].where(segments["speed"] >= 0)
+    speeds = raw.combine(segments["speed_calc"], np.minimum).dropna()
     altitude_ascended_m, altitude_descended_m = _altitude_ascended_descended(segments["altitude"])
 
     return _build_stats_dict(

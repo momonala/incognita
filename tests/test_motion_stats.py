@@ -67,7 +67,7 @@ def test_get_daily_motion_stats_groups_motion_and_stationary_time(motion_stats_d
 
     assert stats["date"] == "2025-01-01"
     assert stats["total_km"] > 0
-    assert stats["max_speed_m_s"] == 20.0
+    assert stats["max_speed_m_s"] == pytest.approx(5.912, rel=0.01)
     assert stats["time_spent_seconds"] > 0
     assert stats["motion_type"]["stationary"]["distance_km"] == 0.0
     assert stats["motion_type"]["stationary"]["time_seconds"] == pytest.approx(60.0, rel=0.01)
@@ -157,3 +157,38 @@ def test_get_motion_stats_for_date_range_rejects_inverted_dates(motion_stats_db)
             "2025-01-01",
             db_filename=str(motion_stats_db),
         )
+
+
+def test_overland_speed_spike_does_not_inflate_max_speed(tmp_path):
+    """Raw Overland speed spike (sensor artifact) must not set max speed above position-derived speed.
+
+    Two points 30m apart over 6 seconds → speed_calc ≈ 5 m/s.
+    Overland raw speed is 15 m/s (a sensor spike). After the fix, max_speed_m_s must
+    reflect speed_calc (~5 m/s), not the raw Overland value (15 m/s = 54 km/h).
+    """
+    db_path = tmp_path / "geo_data.db"
+    rows = [
+        # Start point
+        (-13.3998, 52.5521, "2025-02-01T10:00:00Z", 10.0, 50.0, "cycling"),
+        # 6 seconds later, ~30m away — speed_calc ≈ 5 m/s — but Overland reports 15 m/s spike
+        (-13.3995, 52.5521, "2025-02-01T10:00:06Z", 15.0, 50.0, "cycling"),
+    ]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(f"""
+            CREATE TABLE {DB_NAME} (
+                lon REAL, lat REAL, timestamp TEXT, speed REAL,
+                altitude REAL, horizontal_accuracy REAL, motion TEXT, geojson_file TEXT
+            )
+        """)
+        conn.executemany(
+            f"INSERT INTO {DB_NAME} (lon, lat, timestamp, speed, altitude, horizontal_accuracy, motion, geojson_file) VALUES (?, ?, ?, ?, ?, 10.0, ?, 'test.geojson')",
+            rows,
+        )
+        conn.commit()
+
+    stats = get_daily_motion_stats("2025-02-01", db_filename=str(db_path))
+
+    assert stats["max_speed_m_s"] < 10.0, (
+        f"max_speed_m_s {stats['max_speed_m_s']} should reflect position-derived speed (~5 m/s), "
+        f"not the raw Overland spike of 15 m/s"
+    )
