@@ -3,7 +3,7 @@
 [![CI](https://github.com/momonala/incognita/actions/workflows/ci.yml/badge.svg)](https://github.com/momonala/incognita/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/momonala/incognita/branch/main/graph/badge.svg)](https://codecov.io/gh/momonala/incognita)
 
-Personal GPS tracking and travel visualization system. Collects location data from a GPS app ([Trace](https://github.com/momonala/Trace) or [Overland](https://github.com/aaronpk/Overland-iOS)) and provides interactive dashboards for GPS tracking, flight history, and countries visited.
+Personal GPS tracking and travel visualization system. Collects location data from a GPS app ([Trace](https://github.com/momonala/Trace) or [Overland](https://github.com/aaronpk/Overland-iOS)) and HealthKit exports from an iOS export app, then provides interactive dashboards for GPS tracking, flight history, countries visited, and health metrics.
 
 ## Screenshots
 
@@ -12,44 +12,6 @@ Personal GPS tracking and travel visualization system. Collects location data fr
 
 ![Global flights map with animated routes](static/img/flights_global_map.png)
 *Global flight history with animated routes and travel statistics*
-
-## Tech Stack
-
-Python 3.12, Flask 3.x, SQLite, pandas, GeoPandas, PyDeck, Plotly
-
-## Architecture
-
-```mermaid
-flowchart LR
-    subgraph Mobile
-        iPhone[iPhone] -->|HTTP POST| Overland[Overland App]
-    end
-    subgraph Server
-        Overland -->|GeoJSON| DataAPI[Data API :5003]
-        DataAPI -->|Store| Files[incognita_raw_data /YYYY/MM/DD/HH/]
-        DataAPI -->|Update| DB[(SQLite DB)]
-        DataAPI -->|Heartbeat forward| WebApp
-    end
-    subgraph Web
-        DB -->|Query| WebApp[Flask App :5004]
-        WebApp -->|Render| GPS[GPS Map]
-        WebApp -->|Render| Flights[Flight Tracker]
-        WebApp -->|Render| Passport[Countries Visited]
-        WebApp -->|Render| Live[Live Location]
-    end
-```
-
-**Data flow:** iPhone → Overland App → HTTP POST → Data API → GeoJSON files + SQLite → Flask Web App → Interactive Maps
-
-## Features
-
-- **GPS Tracking**: Receive and store location data from Overland app
-- **Interactive Maps**: Visualize GPS tracks with PyDeck/Deck.gl; date ranges of one week or less play an animated comet-trace of the path (the same effect as the Live page), longer ranges show a static satellite map
-- **Live Location**: Real-time map showing most recent GPS fix with animated day-path replay; staleness dot uses the fresher of the last GPS fix or last heartbeat, so the indicator stays green while stationary
-- **Flight Tracking**: Analyze flight history with statistics and visualizations
-- **Countries Visited**: Track and visualize countries visited with passport-style view
-- **Heartbeat Monitoring**: Telegram alerts for data streaming downtime, with escalating backoff (1m → 5m → 30m → 1h). Alerts are muted during overnight quiet hours (11pm–7am) and during an active snooze window (set via `/snooze` from the Trace app when the phone is intentionally offline)
-- **Daily Motion Stats**: Per-day distance, speed, altitude gain/loss, and time by motion type from the GPS database
 
 ## Prerequisites
 
@@ -77,11 +39,7 @@ flowchart LR
    TELEGRAM_CHAT_ID = "your_chat_id"                 # Optional (heartbeat alerts)
    ```
 
-3. Initialize the database:
-   ```bash
-   uv run refresh-db
-   # or: python -m incognita.scripts.refresh_db
-   ```
+3. Initialize the database — see [Database Refresh](#database-refresh).
 
 ## Running
 
@@ -107,14 +65,7 @@ uv run app
 # or: python -m incognita.app
 ```
 
-Open `http://localhost:5004`
-
-Available routes:
-- `/` - Home page
-- `/gps` - GPS tracking map
-- `/flights` - Flight history and statistics
-- `/passport` - Countries visited visualization
-- `/live` - Live location with animated day-path replay
+Open `http://localhost:5004` — see [API Endpoints](#api-endpoints) for the full route list.
 
 ## Project Structure
 
@@ -124,13 +75,17 @@ incognita/
 │   ├── app.py                  # Main Flask web app (port 5004)
 │   ├── data_api.py             # GPS data receiver server (port 5003)
 │   ├── database.py             # SQLite ingest and GeoJSON parsing
+│   ├── health_database.py      # HealthKit sample ingest/query (health_data.db)
 │   ├── motion_stats.py         # Daily motion stats from geo_data.db
 │   ├── gps_geometry.py         # Haversine distance and segment metrics on point series
 │   ├── gps_trips_renderer.py   # Raw GPS trips (load, segment, simplify) + PyDeck map HTML
+│   ├── gps_export.py           # Standalone GPS trace export page rendering
 │   ├── flights.py              # Flight data processing
 │   ├── countries.py            # Country tracking
+│   ├── observability.py        # Spyglass metrics reporting helpers
+│   ├── data_models.py          # Pydantic schemas (MotionStatsRange, HealthDump, etc.)
 │   ├── utils.py                # Utility functions
-│   ├── values.py               # Configuration constants
+│   ├── values.py               # Secrets (git-ignored)
 │   └── scripts/
 │       ├── refresh_db.py       # Rebuild database from raw files
 │       ├── health_step_duplicates.py  # Find days with step data from multiple hardware versions
@@ -140,15 +95,49 @@ incognita/
 ├── templates/                  # Jinja2 templates
 │   ├── index.html
 │   ├── gps.html
+│   ├── gps_export.html
 │   ├── flights.html
-│   └── passport.html
+│   ├── passport.html
+│   ├── health.html
+│   ├── live.html
+│   └── navbar.html
 ├── static/                     # Static assets
 │   ├── trips_trace.js          # Shared deck.gl comet-trace animation (live + gps pages)
 │   ├── table_utils.js
 │   └── styles.css
 ├── data/
-│   └── geo_data.db            # SQLite database
+│   ├── geo_data.db             # SQLite database: GPS/motion data
+│   └── health_data.db          # SQLite database: HealthKit samples
 ```
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Mobile
+        iPhone[iPhone] -->|HTTP POST| Overland[Overland App]
+        iPhone -->|HealthKit export| HKApp[iOS Health Export App]
+    end
+    subgraph Server
+        Overland -->|GeoJSON| DataAPI[Data API :5003]
+        HKApp -->|HealthKit batches| DataAPI
+        DataAPI -->|Store| Files[incognita_raw_data /YYYY/MM/DD/HH/]
+        DataAPI -->|Update| DB[(geo_data.db)]
+        DataAPI -->|Update| HealthDB[(health_data.db)]
+        DataAPI -->|Heartbeat forward| WebApp
+    end
+    subgraph Web
+        DB -->|Query| WebApp[Flask App :5004]
+        HealthDB -->|Query| WebApp
+        WebApp -->|Render| GPS[GPS Map]
+        WebApp -->|Render| Flights[Flight Tracker]
+        WebApp -->|Render| Passport[Countries Visited]
+        WebApp -->|Render| Live[Live Location]
+        WebApp -->|Render| Health[Health Dashboard]
+    end
+```
+
+**Data flow:** iPhone → Overland App / HealthKit export app → HTTP POST → Data API → GeoJSON files + SQLite → Flask Web App → Interactive Maps
 
 ## API Endpoints
 
@@ -164,6 +153,8 @@ incognita/
 | `/ios-dump` | POST | Receive HealthKit sample batches from the iOS export app |
 | `/health-data` | GET | Daily HealthKit summary (steps, distance, energy, flights climbed) |
 | `/motion-stats` | GET | Daily GPS motion summary from SQLite (distance, speed, altitude, by motion type) |
+| `/motion-stats-range` | GET | Motion summaries for the last N days (`days`, default 7, max 366) |
+| `/health-data-range` | GET | Daily health summaries for the last N days (`days`, default 7, max 366) |
 | `/coordinates` | GET | Fetch simplified coordinates from raw GPS files |
 | `/observability` | GET | Redirect to the Spyglass-hosted observability dashboard |
 
@@ -173,10 +164,17 @@ incognita/
 |----------|--------|-------------|
 | `/` | GET | Home page |
 | `/gps` | GET/POST | GPS tracking map (date range selection); ranges ≤7 days render an animated comet-trace, longer ranges a static map |
+| `/gps/export` | GET | Standalone GPS trace export page with motion stats and an interactive map (`title`, `start_date`, `end_date` query params) |
 | `/flights` | GET | Flight history dashboard |
 | `/passport` | GET | Countries visited visualization |
+| `/health` | GET | HealthKit dashboard page (steps, distance, energy, flights climbed, heart rate, etc.) |
+| `/health/meta` | GET | Available devices and date range for the Health dashboard's filter controls |
+| `/health/data` | GET | Daily-aggregated chart data and raw samples for a given `metric` (+ `from`/`to`/`device` filters) |
+| `/health/table` | GET | One row per day with a column per HealthKit metric |
+| `/health/summary` | GET | Deduplicated totals/averages per metric over a date window |
 | `/live` | GET | Live location map with animated day-path replay |
 | `/live/current` | GET | JSON snapshot of current location, GPS fix time, and last heartbeat time |
+| `/live/health` | GET | Proxies today's health stats from the iOS health API |
 | `/internal/heartbeat` | POST | Internal endpoint; receives forwarded heartbeat from data API to update last-seen time |
 | `/observability` | GET | Redirect to the Spyglass-hosted observability dashboard |
 
@@ -248,6 +246,19 @@ overland (table)
 └── geojson_file: TEXT (source file path)
 ```
 
+One table per HealthKit metric (`data/health_data.db`, schema in `health_database.py`), one row per sample:
+```
+<metric> (table, e.g. step_count, heart_rate, distance, active_energy, flights_climbed)
+├── uuid: TEXT (PK)
+├── type, start, end: TEXT
+├── value: REAL
+├── unit, source: TEXT
+├── device_name, device_model, device_manufacturer: TEXT
+├── device_hardware_version, device_software_version: TEXT
+├── metadata: TEXT (JSON)
+└── batch_index: INTEGER
+```
+
 **Key constraints:**
 - `timestamp` is the unique primary key (one row per timestamp)
 - Data filtered by `horizontal_accuracy <= 200m` by default
@@ -287,17 +298,6 @@ This script:
 - Filters by horizontal accuracy
 - Creates timestamp index
 - Runs VACUUM to optimize database
-
-## Key Concepts
-
-| Concept | Description |
-|---------|-------------|
-| `timestamp` | ISO 8601 timestamp (unique primary key) |
-| `horizontal_accuracy` | GPS accuracy in meters (filtered at ≤200m) |
-| `speed` | Speed from Overland (m/s, nullable) |
-| `motion` | Motion type from Overland (`stationary`, `walking`, `cycling`, `automotive`, etc.) |
-| Motion categories | `/motion-stats` reports `automotive`, `cycling`, `running`, `stationary`, `unknown`, `walking` |
-| Content hash | MD5 hash of first/last timestamp + count for deduplication |
 
 ## Storage
 
@@ -342,46 +342,7 @@ Visit `/observability` on either server to open the spyglass dashboard.
 # Format code
 black . && isort .
 
-# Refresh database
-uv run refresh-db
-# or: python -m incognita.scripts.refresh_db
-
 # Find days with step data from multiple hardware versions
 uv run health
 # or: python -m incognita.scripts.health_step_duplicates
 ```
-
-## Deployment
-
-### Systemd Services
-
-Service files in `install/` directory:
-
-- `projects_data-api.service` - Data API server (port 5003)
-- `projects_incognita.service` - Web app (port 5004)
-- `projects_incognita_data-backup-scheduler.service` - Git backup scheduler
-
-```bash
-sudo cp install/*.service /etc/systemd/system/
-sudo systemctl enable projects_data-api.service
-sudo systemctl enable projects_incognita.service
-sudo systemctl enable projects_incognita_data-backup-scheduler.service
-sudo systemctl start projects_data-api.service
-sudo systemctl start projects_incognita.service
-sudo systemctl start projects_incognita-data-backup-scheduler.service
-```
-
-### Overland App Configuration
-
-Configure Overland app to POST to your server:
-- **URL**: `http://your-server-ip:5003/dump`
-- **Method**: POST
-- **Format**: GeoJSON
-
-## Known Limitations
-
-- Timestamp is unique - duplicate timestamps are filtered out
-- Files with missing `horizontal_accuracy` are skipped
-- Database uses WAL mode for concurrent writes
-- No authentication on API endpoints
-- Heartbeat alerts muted between 11pm–7am and during an active `/snooze` window
