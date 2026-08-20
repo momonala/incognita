@@ -164,11 +164,12 @@ def flights():
 
 @app.route("/gps", methods=["GET", "POST"])
 def gps():
-    """Render GPS map page for a configurable date range; defaults to last 30 days on first load."""
+    """Render GPS map page for a configurable date range; defaults to yesterday on first load."""
     default_location = DEFAULT_MAP_BOX
     now = datetime.now(timezone.utc)
-    default_start = (now - timedelta(days=GPS_DEFAULT_DAYS_BACK)).strftime(DATE_FMT)
-    default_end = now.strftime(DATE_FMT)
+    yesterday = (now - timedelta(days=1)).strftime(DATE_FMT)
+    default_start = yesterday
+    default_end = yesterday
 
     start_date = request.form.get("start_date", default_start)
     end_date = request.form.get("end_date", default_end)

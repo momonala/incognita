@@ -30,6 +30,10 @@
                     <input type="text" id="start_date" name="start_date" value="{{ start_date }}" autocomplete="off" aria-label="Start date">
                     <label for="end_date">To</label>
                     <input type="text" id="end_date" name="end_date" value="{{ end_date }}" autocomplete="off" aria-label="End date">
+                    <div class="gps-toolbar__nav-group">
+                        <button type="button" id="prev_date" class="gps-toolbar__submit gps-toolbar__nav" aria-label="Previous day">&#8249;</button>
+                        <button type="button" id="next_date" class="gps-toolbar__submit gps-toolbar__nav" aria-label="Next day">&#8250;</button>
+                    </div>
                 </div>
                 <p class="gps-toolbar__stats" aria-live="polite">
                     <span>{{ day_count }} day{{ 's' if day_count != 1 else '' }}</span>
@@ -129,6 +133,31 @@
                     $("#date_form").submit();
                 }
             });
+
+            let navSubmitTimer = null;
+
+            function shiftDates(delta) {
+                const parseDate = s => new Date(s + "T00:00:00Z");
+                const fmtDate = d => d.toISOString().slice(0, 10);
+                const start = parseDate($("#start_date").val());
+                const end = parseDate($("#end_date").val());
+                start.setUTCDate(start.getUTCDate() + delta);
+                end.setUTCDate(end.getUTCDate() + delta);
+                $("#start_date").val(fmtDate(start));
+                $("#end_date").val(fmtDate(end));
+                clearTimeout(navSubmitTimer);
+                navSubmitTimer = setTimeout(function () {
+                    $("#date_form").submit();
+                }, 600);
+            }
+
+            function flashButton(btn) {
+                btn.addClass("gps-toolbar__nav--active");
+                setTimeout(function () { btn.removeClass("gps-toolbar__nav--active"); }, 200);
+            }
+
+            $("#prev_date").on("click", function () { flashButton($(this)); shiftDates(-1); });
+            $("#next_date").on("click", function () { flashButton($(this)); shiftDates(1); });
 
             const exportDialog = $("#export-dialog");
             const loadingDialog = $("#export-loading-dialog");

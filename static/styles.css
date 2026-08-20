@@ -525,6 +525,23 @@ tfoot input {
     border-right: none;
 }
 
+.gps-toolbar__nav-group {
+    display: flex;
+    gap: 2px;
+}
+
+.gps-toolbar__nav {
+    padding: var(--space-sm) var(--space-md);
+    font-size: 16px;
+    line-height: 1;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.gps-toolbar__nav--active {
+    background: var(--color-accent-hover);
+    transform: scale(0.92);
+}
+
 .gps-toolbar__submit {
     padding: var(--space-sm) var(--space-lg);
     font-size: 14px;
