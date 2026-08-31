@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src="{{ url_for('static', filename='date_range_picker.js') }}"></script>
     {% if animated %}
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.css" rel="stylesheet">
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.js"></script>
@@ -26,10 +27,14 @@
         <header class="gps-toolbar map-page__bar" aria-label="Date range and map info">
             <form id="date_form" action="/gps" method="post" class="gps-toolbar__form">
                 <div class="gps-toolbar__dates">
-                    <label for="start_date">From</label>
-                    <input type="text" id="start_date" name="start_date" value="{{ start_date }}" autocomplete="off" aria-label="Start date">
-                    <label for="end_date">To</label>
-                    <input type="text" id="end_date" name="end_date" value="{{ end_date }}" autocomplete="off" aria-label="End date">
+                    <div class="drp" id="date_range_picker">
+                        <button type="button" class="drp__trigger" data-drp-trigger aria-haspopup="dialog" aria-expanded="false">
+                            <span class="drp__value" data-drp-label></span>
+                        </button>
+                        <div class="drp__panel" data-drp-panel role="dialog" aria-label="Select date range" hidden></div>
+                    </div>
+                    <input type="hidden" id="start_date" name="start_date" value="{{ start_date }}">
+                    <input type="hidden" id="end_date" name="end_date" value="{{ end_date }}">
                     <div class="gps-toolbar__nav-group">
                         <button type="button" id="prev_date" class="gps-toolbar__submit gps-toolbar__nav" aria-label="Previous day">&#8249;</button>
                         <button type="button" id="next_date" class="gps-toolbar__submit gps-toolbar__nav" aria-label="Next day">&#8250;</button>
@@ -124,31 +129,33 @@
 
     <script>
         $(function () {
-            $("#start_date, #end_date").datepicker({
-                dateFormat: 'yy-mm-dd'
-            });
-
-            $("#start_date, #end_date").on("keydown", function (event) {
-                if (event.key === "Enter") {
-                    $("#date_form").submit();
-                }
-            });
-
             let navSubmitTimer = null;
 
-            function shiftDates(delta) {
-                const parseDate = s => new Date(s + "T00:00:00Z");
-                const fmtDate = d => d.toISOString().slice(0, 10);
-                const start = parseDate($("#start_date").val());
-                const end = parseDate($("#end_date").val());
-                start.setUTCDate(start.getUTCDate() + delta);
-                end.setUTCDate(end.getUTCDate() + delta);
-                $("#start_date").val(fmtDate(start));
-                $("#end_date").val(fmtDate(end));
+            function syncInputs(start, end) {
+                $("#start_date").val(start);
+                $("#end_date").val(end);
+            }
+
+            function submitSoon(delay) {
                 clearTimeout(navSubmitTimer);
                 navSubmitTimer = setTimeout(function () {
                     $("#date_form").submit();
-                }, 600);
+                }, delay);
+            }
+
+            const picker = DateRangePicker(document.getElementById("date_range_picker"), {
+                start: $("#start_date").val(),
+                end: $("#end_date").val(),
+                onChange: syncInputs,
+                onClose: function (changed) {
+                    if (changed) submitSoon(0);
+                },
+            });
+
+            function shiftDates(delta) {
+                picker.shift(delta);
+                syncInputs(picker.start, picker.end);
+                submitSoon(600);
             }
 
             function flashButton(btn) {
