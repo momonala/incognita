@@ -10,8 +10,8 @@ def _stub_renderers(monkeypatch, paths, stats):
     """Point the route at canned trip data and capture what it asks the map to render."""
     rendered: list[list] = []
 
-    def _fake_render(paths_for_map, filename, bbox):
-        rendered.append(paths_for_map)
+    def _fake_render(paths_for_map, filename, bbox, map_provider="google_maps"):
+        rendered.append((paths_for_map, map_provider))
         filename.write_text("<html></html>")
 
     monkeypatch.setattr("incognita.app.get_trip_points_for_date_range", lambda s, e: None)
@@ -20,9 +20,12 @@ def _stub_renderers(monkeypatch, paths, stats):
     return rendered
 
 
-def _post_range(start="2025-01-01", end="2025-01-02"):
+def _post_range(start="2025-01-01", end="2025-01-02", map_backend=None):
+    data = {"start_date": start, "end_date": end}
+    if map_backend is not None:
+        data["map_backend"] = map_backend
     with app.test_client() as client:
-        return client.post("/gps", data={"start_date": start, "end_date": end})
+        return client.post("/gps", data=data)
 
 
 def test_gps_route_rerenders_map_for_empty_range(monkeypatch):
@@ -32,7 +35,7 @@ def test_gps_route_rerenders_map_for_empty_range(monkeypatch):
     response = _post_range()
 
     assert response.status_code == 200
-    assert rendered == [[]]
+    assert rendered == [([], "google_maps")]
 
 
 def test_gps_route_renders_paths_for_populated_range(monkeypatch):
@@ -42,7 +45,7 @@ def test_gps_route_renders_paths_for_populated_range(monkeypatch):
     response = _post_range()
 
     assert response.status_code == 200
-    assert rendered == [paths]
+    assert rendered == [(paths, "google_maps")]
 
 
 def test_gps_route_versions_map_url(monkeypatch):
@@ -52,3 +55,34 @@ def test_gps_route_versions_map_url(monkeypatch):
     response = _post_range()
 
     assert b"gps_pydeck.html?v=" in response.data
+
+
+def test_gps_route_uses_mapbox_provider_when_overridden(monkeypatch):
+    """Choosing Mapbox switches the static render's basemap provider."""
+    rendered = _stub_renderers(monkeypatch, None, EMPTY_STATS)
+
+    response = _post_range(map_backend="mapbox")
+
+    assert response.status_code == 200
+    assert rendered == [([], "mapbox")]
+
+
+def test_gps_route_google_backend_skips_animated_trace(monkeypatch):
+    """Google has no live trace, so a short range still renders the static map."""
+    trip_points = [[[0.0, 0.0, 1.0], [0.0, 0.01, 2.0]]]
+    rendered = _stub_renderers(monkeypatch, None, EMPTY_STATS)
+    monkeypatch.setattr("incognita.app.get_trip_points_for_date_range", lambda s, e: trip_points)
+
+    response = _post_range(map_backend="google")
+
+    assert response.status_code == 200
+    assert rendered == [([], "google_maps")]
+
+
+def test_gps_route_falls_back_to_auto_for_unknown_backend(monkeypatch):
+    rendered = _stub_renderers(monkeypatch, None, EMPTY_STATS)
+
+    response = _post_range(map_backend="not-a-provider")
+
+    assert response.status_code == 200
+    assert rendered == [([], "google_maps")]

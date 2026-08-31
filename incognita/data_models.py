@@ -96,6 +96,24 @@ class TripDisplayStats(BaseModel):
     trips_count: int
 
 
+class MapBackend(StrEnum):
+    """Basemap provider for the GPS page.
+
+    AUTO keeps the per-range default: an animated Mapbox trace for short ranges,
+    a static Google satellite render otherwise. GOOGLE never animates — the live
+    trace is a deck.gl overlay on Mapbox GL and has no Google equivalent here.
+    """
+
+    AUTO = "auto"
+    MAPBOX = "mapbox"
+    GOOGLE = "google"
+
+    @property
+    def pydeck_provider(self) -> str:
+        """pydeck ``map_provider`` value for the static render."""
+        return "mapbox" if self is MapBackend.MAPBOX else "google_maps"
+
+
 class HealthKitExportType(StrEnum):
     """Display names sent by the iOS HealthKit export app."""
 

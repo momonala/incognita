@@ -47,8 +47,31 @@
                     <span>{{ file_size_mb|round(2) }} MB</span>
                 </p>
                 <div class="gps-toolbar__actions">
-                    <button type="submit" id="submit_button" class="gps-toolbar__submit">Update</button>
-                    <button type="button" id="export_button" class="gps-toolbar__submit">Export</button>
+                    <div class="gps-toolbar__field{{ ' gps-toolbar__field--set' if map_backend != 'auto' }}"
+                         title="Basemap: {{ map_backend }}{{ ' (Google has no live trace)' if map_backend == 'google' }}">
+                        <svg class="gps-toolbar__field-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                            <path d="M8 1.5 1.5 5 8 8.5 14.5 5 8 1.5Z" />
+                            <path d="M1.5 8.5 8 12l6.5-3.5M1.5 11.5 8 15l6.5-3.5" />
+                        </svg>
+                        <select id="map_backend" name="map_backend" class="gps-toolbar__select" aria-label="Basemap provider">
+                            <option value="auto" {{ 'selected' if map_backend == 'auto' }}>Auto</option>
+                            <option value="mapbox" {{ 'selected' if map_backend == 'mapbox' }}>Mapbox</option>
+                            <option value="google" {{ 'selected' if map_backend == 'google' }}>Google</option>
+                        </select>
+                    </div>
+                    <button type="submit" id="submit_button" class="gps-toolbar__submit gps-toolbar__icon-btn" title="Update" aria-label="Update">
+                        <svg class="gps-toolbar__icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                            <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" />
+                            <path d="M13.6 1.9v2.6H11" />
+                        </svg>
+                    </button>
+                    <button type="button" id="export_button" class="gps-toolbar__ghost-btn" title="Export" aria-label="Export">
+                        <svg class="gps-toolbar__icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                            <path d="M8 10.5V1.8" />
+                            <path d="M4.8 5 8 1.8 11.2 5" />
+                            <path d="M2.5 10v3.2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V10" />
+                        </svg>
+                    </button>
                 </div>
             </form>
         </header>
@@ -162,6 +185,8 @@
                 btn.addClass("gps-toolbar__nav--active");
                 setTimeout(function () { btn.removeClass("gps-toolbar__nav--active"); }, 200);
             }
+
+            $("#map_backend").on("change", function () { submitSoon(0); });
 
             $("#prev_date").on("click", function () { flashButton($(this)); shiftDates(-1); });
             $("#next_date").on("click", function () { flashButton($(this)); shiftDates(1); });

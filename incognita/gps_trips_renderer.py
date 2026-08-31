@@ -13,7 +13,7 @@ import pandas as pd
 import pydeck as pdk
 
 from incognita.config import GPS_MAP_FILENAME
-from incognita.data_models import GeoBoundingBox, LiveLocationSnapshot, TripDisplayStats
+from incognita.data_models import GeoBoundingBox, LiveLocationSnapshot, MapBackend, TripDisplayStats
 from incognita.database import extract_properties_from_geojson, read_geojson_file
 from incognita.gps_geometry import add_speed_to_gdf
 from incognita.observability import configure_logging, timed
@@ -53,6 +53,7 @@ def gps_df_to_deck_map(
     trips_df: pd.DataFrame,
     points_df: pd.DataFrame = pd.DataFrame(),
     filename: str = GPS_MAP_FILENAME,
+    map_provider: str = MapBackend.AUTO.pydeck_provider,
 ) -> tuple[pdk.Deck, int, float]:
     """Build a PyDeck map HTML file from trip paths and optional scatter points."""
     layers = []
@@ -93,7 +94,7 @@ def gps_df_to_deck_map(
         layers=layers,
         initial_view_state=view_state,
         api_keys={"mapbox": MAPBOX_API_KEY, "google_maps": GOOGLE_MAPS_API_KEY},
-        map_provider="google_maps",
+        map_provider=map_provider,
         map_style="satellite",
     )
     deck.to_html(filename=filename)
@@ -103,10 +104,11 @@ def gps_df_to_deck_map(
     if not trips_df.empty and "geometry" in trips_df.columns:
         points_count += sum(len(geom) for geom in trips_df["geometry"])
     logger.debug(
-        "[gps_df_to_deck_map] points_shape=%s trips_shape=%s filename=%s size_mb=%.2f",
+        "[gps_df_to_deck_map] points_shape=%s trips_shape=%s filename=%s provider=%s size_mb=%.2f",
         points_df.shape,
         trips_df.shape,
         filename,
+        map_provider,
         size_mb,
     )
     return deck, points_count, size_mb
@@ -625,6 +627,7 @@ def render_trips_to_file(
     paths_for_map: list[list[list[float]]],
     gps_map_filename: Path,
     bbox: GeoBoundingBox,
+    map_provider: str = MapBackend.AUTO.pydeck_provider,
 ) -> None:
     """Write trip paths to an HTML map file. No return value."""
     trips_df = pd.DataFrame({"geometry": paths_for_map})
@@ -633,6 +636,7 @@ def render_trips_to_file(
         trips_df,
         points_df=pd.DataFrame(),
         filename=str(gps_map_filename),
+        map_provider=map_provider,
     )
 
 

@@ -14,7 +14,7 @@ from incognita.countries import (
     get_visited_stats,
     visited_df_to_deck_map,
 )
-from incognita.data_models import HealthKitExportType
+from incognita.data_models import HealthKitExportType, MapBackend
 from incognita.flights import (
     flights_df_to_graph,
     get_countries,
@@ -162,6 +162,14 @@ def flights():
     )
 
 
+def _parse_map_backend(raw: str | None) -> MapBackend:
+    """Map the posted backend choice to a MapBackend, falling back to AUTO."""
+    try:
+        return MapBackend(raw)
+    except ValueError:
+        return MapBackend.AUTO
+
+
 @app.route("/gps", methods=["GET", "POST"])
 def gps():
     """Render GPS map page for a configurable date range; defaults to yesterday on first load."""
@@ -173,6 +181,7 @@ def gps():
 
     start_date = request.form.get("start_date", default_start)
     end_date = request.form.get("end_date", default_end)
+    map_backend = _parse_map_backend(request.form.get("map_backend"))
     start_dt = datetime.strptime(start_date, DATE_FMT).replace(tzinfo=timezone.utc)
     end_dt = datetime.strptime(end_date, DATE_FMT).replace(
         hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc
@@ -186,7 +195,8 @@ def gps():
     trips_count = 0
     file_size_mb = 0.0
 
-    if day_count <= GPS_ANIMATE_MAX_DAYS:
+    # Google's basemap has no deck.gl overlay here, so picking it rules out the animated trace.
+    if map_backend is not MapBackend.GOOGLE and day_count <= GPS_ANIMATE_MAX_DAYS:
         trip_points = get_trip_points_for_date_range(start_dt, end_dt)
         if trip_points:
             animated = True
@@ -199,7 +209,9 @@ def gps():
         paths, stats = get_trips_for_date_range(start_dt, end_dt)
         # Always rewrite the map, empty ranges included — the file is shared across
         # requests, so skipping the write leaves the previous range's map on screen.
-        render_trips_to_file(paths or [], Path(GPS_MAP_FILENAME), default_location)
+        render_trips_to_file(
+            paths or [], Path(GPS_MAP_FILENAME), default_location, map_provider=map_backend.pydeck_provider
+        )
         map_path = Path(GPS_MAP_FILENAME)
         file_size_mb = map_path.stat().st_size / BYTES_PER_MB
         track_points = stats.track_points
@@ -207,7 +219,13 @@ def gps():
         # The map's URL never changes, so version it to keep the iframe off the cache.
         map_filename = f"{GPS_MAP_FILENAME}?v={map_path.stat().st_mtime_ns}"
 
-    logger.debug("[/gps] done start_date=%s end_date=%s animated=%s", start_date, end_date, animated)
+    logger.debug(
+        "[/gps] done start_date=%s end_date=%s backend=%s animated=%s",
+        start_date,
+        end_date,
+        map_backend.value,
+        animated,
+    )
     return render_template(
         "gps.html",
         start_date=start_date,
@@ -215,6 +233,7 @@ def gps():
         map_filename=map_filename,
         animated=animated,
         day_paths=day_paths,
+        map_backend=map_backend.value,
         mapbox_api_key=MAPBOX_API_KEY,
         day_count=day_count,
         track_points=track_points,
