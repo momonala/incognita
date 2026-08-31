@@ -194,21 +194,25 @@ def gps():
             track_points = sum(len(p) for p in trip_points)
             trips_count = len(trip_points)
 
+    map_filename = GPS_MAP_FILENAME
     if not animated:
         paths, stats = get_trips_for_date_range(start_dt, end_dt)
-        if paths is not None:
-            render_trips_to_file(paths, Path(GPS_MAP_FILENAME), default_location)
+        # Always rewrite the map, empty ranges included — the file is shared across
+        # requests, so skipping the write leaves the previous range's map on screen.
+        render_trips_to_file(paths or [], Path(GPS_MAP_FILENAME), default_location)
         map_path = Path(GPS_MAP_FILENAME)
-        file_size_mb = map_path.stat().st_size / BYTES_PER_MB if map_path.exists() else 0.0
+        file_size_mb = map_path.stat().st_size / BYTES_PER_MB
         track_points = stats.track_points
         trips_count = stats.trips_count
+        # The map's URL never changes, so version it to keep the iframe off the cache.
+        map_filename = f"{GPS_MAP_FILENAME}?v={map_path.stat().st_mtime_ns}"
 
     logger.debug("[/gps] done start_date=%s end_date=%s animated=%s", start_date, end_date, animated)
     return render_template(
         "gps.html",
         start_date=start_date,
         end_date=end_date,
-        map_filename=GPS_MAP_FILENAME,
+        map_filename=map_filename,
         animated=animated,
         day_paths=day_paths,
         mapbox_api_key=MAPBOX_API_KEY,
