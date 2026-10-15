@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
-import requests
 from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
 
 from incognita.config import DASHBOARD_PORT, GPS_MAP_FILENAME, SPYGLASS_DASHBOARD_URL, VISITED_MAP_FILENAME
@@ -35,6 +34,7 @@ from incognita.gps_trips_renderer import (
 from incognita.health_database import (
     HEALTH_DB_FILE,
     filter_dominant_hardware_rows,
+    get_daily_health_dump,
     get_health_meta,
     load_metric_df,
 )
@@ -269,8 +269,6 @@ def gps_export():
     return render_template("gps_export.html", google_maps_api_key=GOOGLE_MAPS_API_KEY, **context)
 
 
-HEALTH_API_URL = "http://localhost:5009/api/health-data"
-
 # How each HealthKit metric is aggregated to a daily value for the chart.
 _HEALTH_METRIC_AGG: dict[str, str] = {
     "step_count": "sum",
@@ -437,12 +435,11 @@ def health_summary_api():
 
 @app.route("/live/health")
 def live_health():
-    """Proxy today's health stats from the iOS health API."""
-    try:
-        r = requests.get(f"{HEALTH_API_URL}?date=today", timeout=3)
-        return jsonify(r.json())
-    except Exception:
-        return jsonify({"data": []}), 200
+    """Return today's health totals for the live page's stats bar."""
+    totals = get_daily_health_dump(datetime.now().strftime("%Y-%m-%d"))
+    if all(value is None for value in totals.values()):
+        return jsonify({"data": []})
+    return jsonify({"data": [totals]})
 
 
 @app.route("/internal/heartbeat", methods=["POST"])

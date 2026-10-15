@@ -76,11 +76,11 @@
             if (!body.data || !body.data.length) return;
             const d = body.data[0];
             const parts = [
-                fmtSteps(d.steps) + ' steps',
-                Math.round(d.kcals) + ' kcal',
-                d.km.toFixed(1) + 'km',
-                d.flights_climbed + ' flights',
-            ];
+                d.steps != null && fmtSteps(d.steps) + ' steps',
+                d.kcals != null && Math.round(d.kcals) + ' kcal',
+                d.km != null && d.km.toFixed(1) + 'km',
+                d.flights_climbed != null && d.flights_climbed + ' flights',
+            ].filter(Boolean);
             healthEl.textContent = parts.join(' | ');
             healthEl.style.display = 'block';
         })
