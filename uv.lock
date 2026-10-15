@@ -2410,7 +2410,7 @@ wheels = [
 [[package]]
 name = "spyglass"
 version = "0.1.0"
-source = { git = "https://github.com/momonala/spyglass.git?rev=main#045dd7186420a4be160c90c7b7284948b5b8f641" }
+source = { git = "https://github.com/momonala/spyglass.git?rev=main#ebc4a2d81c00f76156168f3de0604787925701c5" }
 dependencies = [
     { name = "alembic" },
     { name = "flask" },
