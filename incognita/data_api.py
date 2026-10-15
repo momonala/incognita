@@ -319,19 +319,20 @@ def heartbeat():
 
 @app.route("/snooze", methods=["POST"])
 def snooze():
-    """Mute downtime alerts for N hours (1–24). Used when the phone is intentionally offline."""
+    """Mute downtime alerts for N minutes (1–1440) or N hours (1–24). Used when the phone is intentionally offline."""
     global snooze_until
     body = request.get_json(silent=True) or {}
     try:
-        hours = int(body.get("hours"))
+        minutes = int(body["minutes"]) if "minutes" in body else int(body.get("hours")) * 60
     except (TypeError, ValueError):
-        return jsonify({"error": "hours must be an integer between 1 and 24"}), 400
-    if not 1 <= hours <= 24:
-        return jsonify({"error": "hours must be between 1 and 24"}), 400
+        return jsonify({"error": "send minutes (1–1440) or hours (1–24) as an integer"}), 400
+    if not 1 <= minutes <= 24 * 60:
+        return jsonify({"error": "snooze must be between 1 minute and 24 hours"}), 400
 
-    snooze_until = datetime.now() + timedelta(hours=hours)
-    logger.info(f"😴 Alerts snoozed for {hours}h, until {snooze_until:%Y-%m-%d %H:%M:%S}")
-    _post_telegram(f"😴 Alerts snoozed for {hours}h, until {snooze_until:%H:%M}")
+    snooze_until = datetime.now() + timedelta(minutes=minutes)
+    duration = f"{minutes // 60}h{minutes % 60:02d}m"
+    logger.info(f"😴 Alerts snoozed for {duration}, until {snooze_until:%Y-%m-%d %H:%M:%S}")
+    _post_telegram(f"😴 Alerts snoozed for {duration}, until {snooze_until:%H:%M}")
     return jsonify({"status": "ok", "snooze_until": snooze_until.isoformat()}), 200
 
 

@@ -323,11 +323,40 @@ def test_snooze_sets_window_and_mutes_alerts(monkeypatch):
     assert data_api.alerts_muted() == f"snoozed until {data_api.snooze_until:%H:%M}"
 
 
-@pytest.mark.parametrize("hours", [0, 25, -1, "abc", None])
-def test_snooze_rejects_out_of_range(hours):
-    """/snooze only accepts integer hours in 1–24."""
+def test_snooze_accepts_minutes(monkeypatch):
+    """/snooze with minutes sets the window to that many minutes from now."""
+    from datetime import datetime, timedelta
+
+    import incognita.data_api as data_api
+
+    monkeypatch.setattr(data_api, "snooze_until", None)
+    monkeypatch.setattr(data_api, "_post_telegram", lambda text: 1)
+
     with app.test_client() as client:
-        response = client.post("/snooze", json={"hours": hours})
+        response = client.post("/snooze", json={"minutes": 95})
+
+    assert response.status_code == 200
+    expected = datetime.now() + timedelta(minutes=95)
+    assert abs((data_api.snooze_until - expected).total_seconds()) < 5
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"hours": 0},
+        {"hours": 25},
+        {"hours": -1},
+        {"hours": "abc"},
+        {"hours": None},
+        {"minutes": 0},
+        {"minutes": 1441},
+        {"minutes": "abc"},
+    ],
+)
+def test_snooze_rejects_out_of_range(body):
+    """/snooze only accepts integer minutes in 1–1440 or hours in 1–24."""
+    with app.test_client() as client:
+        response = client.post("/snooze", json=body)
 
     assert response.status_code == 400
 
