@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from incognita.data_models import HealthKitBatch, HealthKitExportType
+from incognita.database import connect
 from incognita.observability import metrics
 
 logger = logging.getLogger(__name__)
@@ -52,8 +53,7 @@ def init_db(db_filename: str = HEALTH_DB_FILE) -> None:
     but can also be run directly: python -m incognita.health_database
     """
     Path(db_filename).parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_filename) as conn:
-        conn.execute("PRAGMA journal_mode=WAL")
+    with connect(db_filename) as conn:
         for export_type in HealthKitExportType:
             conn.execute(_CREATE_TABLE_SQL.format(table=export_type.table_name))
         conn.commit()
@@ -76,8 +76,7 @@ def insert_health_batch(
     metrics.increment("samples_received", len(batch.samples))
     inserted = 0
     try:
-        with sqlite3.connect(db_filename) as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
+        with connect(db_filename) as conn:
             for export_type in HealthKitExportType:
                 conn.execute(_CREATE_TABLE_SQL.format(table=export_type.table_name))
 
@@ -174,7 +173,7 @@ def load_metric_df(
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     sql = f"SELECT uuid, start, end, value, unit, source, device_name, device_hardware_version FROM {export_type.table_name} {where} ORDER BY start"
 
-    with sqlite3.connect(db_filename) as conn:
+    with connect(db_filename) as conn:
         return pd.read_sql(sql, conn, params=params or None)
 
 
@@ -192,7 +191,7 @@ def get_health_meta(db_filename: str = HEALTH_DB_FILE) -> dict:
     min_date: str | None = None
     max_date: str | None = None
 
-    with sqlite3.connect(db_filename) as conn:
+    with connect(db_filename) as conn:
         for export_type in HealthKitExportType:
             table = export_type.table_name
             try:
@@ -251,7 +250,7 @@ def get_daily_health_dump(date: str, db_filename: str = HEALTH_DB_FILE) -> dict:
         metric = export_type.table_name
         agg_fn, scale = _METRIC_AGG[metric]
         sql = f"SELECT uuid, value, device_hardware_version FROM {metric} " "WHERE start >= ? AND start <= ?"
-        with sqlite3.connect(db_filename) as conn:
+        with connect(db_filename) as conn:
             df = pd.read_sql(sql, conn, params=[date, date + "T23:59:59Z"])
 
         if df.empty:
@@ -362,7 +361,7 @@ def invalidate_health_dump_cache(dates: list[str], db_filename: str = HEALTH_DB_
     if not dates or not Path(db_filename).exists():
         return
     placeholders = ",".join("?" for _ in dates)
-    with sqlite3.connect(db_filename) as conn:
+    with connect(db_filename) as conn:
         _ensure_health_dump_cache_table(conn)
         conn.execute(
             f"DELETE FROM {_HEALTH_DUMP_CACHE_TABLE} WHERE date IN ({placeholders})",
@@ -383,7 +382,7 @@ def _ensure_health_dump_cache_table(conn: sqlite3.Connection) -> None:
 def _read_health_dump_cache(date: str, db_filename: str) -> dict | None:
     if not Path(db_filename).exists():
         return None
-    with sqlite3.connect(db_filename) as conn:
+    with connect(db_filename) as conn:
         _ensure_health_dump_cache_table(conn)
         row = conn.execute(
             f"SELECT payload FROM {_HEALTH_DUMP_CACHE_TABLE} WHERE date = ?",
@@ -395,7 +394,7 @@ def _read_health_dump_cache(date: str, db_filename: str) -> dict | None:
 
 
 def _write_health_dump_cache(date: str, payload: dict, db_filename: str) -> None:
-    with sqlite3.connect(db_filename) as conn:
+    with connect(db_filename) as conn:
         _ensure_health_dump_cache_table(conn)
         conn.execute(
             f"""

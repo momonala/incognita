@@ -1,13 +1,13 @@
 """Print days where step_count has more than one hardware version recording data."""
 
 import argparse
-import sqlite3
 from pathlib import Path
 
 import pandas as pd
 from rich.console import Console
 from rich.table import Table
 
+from incognita.database import connect
 from incognita.health_database import HEALTH_DB_FILE
 
 console = Console()
@@ -27,7 +27,7 @@ def main() -> None:
     if not db_path.exists():
         raise SystemExit(f"Database not found: {db_path}")
 
-    with sqlite3.connect(db_path) as conn:
+    with connect(db_path) as conn:
         df = pd.read_sql(
             "SELECT date(start) AS day, device_hardware_version, SUM(value) AS steps, COUNT(*) AS samples "
             "FROM step_count "

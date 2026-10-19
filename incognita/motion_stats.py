@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from incognita.database import DB_FILE, DB_NAME
+from incognita.database import DB_FILE, DB_NAME, connect
 from incognita.gps_geometry import add_speed_to_gdf
 
 MOTION_CATEGORIES = ("automotive", "cycling", "running", "stationary", "unknown", "walking")
@@ -155,7 +155,7 @@ def invalidate_motion_stats_cache(dates: list[str], db_filename: str = DB_FILE) 
     if not dates or not Path(db_filename).exists():
         return
     placeholders = ",".join("?" for _ in dates)
-    with sqlite3.connect(db_filename) as conn:
+    with connect(db_filename) as conn:
         _ensure_motion_stats_cache_table(conn)
         conn.execute(
             f"DELETE FROM {_MOTION_STATS_CACHE_TABLE} WHERE date IN ({placeholders})",
@@ -196,7 +196,7 @@ def _ensure_motion_stats_cache_table(conn: sqlite3.Connection) -> None:
 def _read_motion_stats_cache(date: str, db_filename: str) -> dict | None:
     if not Path(db_filename).exists():
         return None
-    with sqlite3.connect(db_filename) as conn:
+    with connect(db_filename) as conn:
         _ensure_motion_stats_cache_table(conn)
         row = conn.execute(
             f"SELECT payload FROM {_MOTION_STATS_CACHE_TABLE} WHERE date = ?",
@@ -208,7 +208,7 @@ def _read_motion_stats_cache(date: str, db_filename: str) -> dict | None:
 
 
 def _write_motion_stats_cache(date: str, stats: dict, db_filename: str) -> None:
-    with sqlite3.connect(db_filename) as conn:
+    with connect(db_filename) as conn:
         _ensure_motion_stats_cache_table(conn)
         conn.execute(
             f"""
@@ -226,7 +226,7 @@ def _load_daily_points(date: str, db_filename: str) -> pd.DataFrame:
 
 def _load_range_points(date_min: str, date_max: str, db_filename: str) -> pd.DataFrame:
     date_max_ts = f"{date_max}T23:59:59Z"
-    with sqlite3.connect(db_filename) as conn:
+    with connect(db_filename) as conn:
         return pd.read_sql(_DAILY_POINTS_SQL, conn, params=[date_min, date_max_ts])
 
 

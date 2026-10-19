@@ -14,6 +14,13 @@ DB_NAME = "overland"
 MIN_HORIZONTAL_ACCURACY = 200.0
 
 
+def connect(db_filename: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_filename)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
+
+
 def update_db(
     geojson_filename: str,
     db_filename: str = DB_FILE,
@@ -41,7 +48,7 @@ def update_db(
             df.to_sql(DB_NAME, conn, if_exists="append", index=False)
         else:
             # Create new connection
-            with sqlite3.connect(db_filename) as conn:
+            with connect(db_filename) as conn:
                 df.to_sql(DB_NAME, conn, if_exists="append", index=False)
     except Exception:
         metrics.increment("error", tags={"kind": "sqlite_error"})
@@ -60,7 +67,7 @@ def update_db(
 
 def create_timestamp_index() -> None:
     """Create timestamp index on the location table for faster range queries."""
-    with sqlite3.connect(DB_FILE) as conn:
+    with connect(DB_FILE) as conn:
         conn.execute(f"CREATE INDEX idx_timestamp ON {DB_NAME} (timestamp);")
         conn.commit()
     logger.info("Added index idx_timestamp")
@@ -131,7 +138,7 @@ def get_gdf_for_map(
     Returns:
         DataFrame with columns lon, lat, timestamp, accuracy, speed.
     """
-    with sqlite3.connect(db_filename) as conn:
+    with connect(db_filename) as conn:
         query = f"""
             SELECT lon, lat, timestamp, horizontal_accuracy AS accuracy, speed
             FROM {DB_NAME}
