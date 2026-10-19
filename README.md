@@ -31,12 +31,12 @@ Personal GPS tracking and travel visualization system. Collects location data fr
    uv sync
    ```
 
-2. Configure `incognita/values.py`:
-   ```python
-   MAPBOX_API_KEY = "your_mapbox_token"              # Required for maps
-   GOOGLE_MAPS_API_KEY = "your_google_maps_key"      # Optional (some views)
-   TELEGRAM_TOKEN = "your_telegram_bot_token"        # Optional (heartbeat alerts)
-   TELEGRAM_CHAT_ID = "your_chat_id"                 # Optional (heartbeat alerts)
+2. Copy `.env.example` to `.env` and fill in:
+   ```bash
+   MAPBOX_API_KEY=...          # Required for maps
+   GOOGLE_MAPS_API_KEY=...     # Optional (some views)
+   TELEGRAM_TOKEN=...          # Optional (heartbeat alerts)
+   TELEGRAM_CHAT_ID=...        # Optional (heartbeat alerts)
    ```
 
 3. Initialize the database — see [Database Refresh](#database-refresh).
@@ -85,7 +85,7 @@ incognita/
 │   ├── observability.py        # Spyglass metrics reporting helpers
 │   ├── data_models.py          # Pydantic schemas (MotionStatsRange, HealthDump, etc.)
 │   ├── utils.py                # Utility functions
-│   ├── values.py               # Secrets (git-ignored)
+│   ├── env.py                  # Secrets loaded from .env (git-ignored)
 │   └── scripts/
 │       ├── refresh_db.py       # Rebuild database from raw files
 │       ├── health_step_duplicates.py  # Find days with step data from multiple hardware versions

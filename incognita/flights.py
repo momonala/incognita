@@ -13,7 +13,7 @@ from incognita.countries import get_countries_df
 from incognita.data_models import Country
 from incognita.gps_geometry import get_haversine_dist
 from incognita.utils import DEFAULT_MAP_BOX, google_sheets_export_csv_url, read_google_sheets_csv
-from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
+from incognita.env import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
 
 logger = logging.getLogger(__name__)
 

@@ -38,7 +38,7 @@ from incognita.health_database import (
 from incognita.motion_stats import get_daily_motion_stats, get_motion_stats_range
 from incognita.observability import configure_logging, metrics
 from incognita.utils import BYTES_PER_MB, get_ip_address
-from incognita.values import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
+from incognita.env import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 
 logger = logging.getLogger(__name__)
 

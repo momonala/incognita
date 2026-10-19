@@ -40,7 +40,7 @@ from incognita.health_database import (
 )
 from incognita.observability import configure_logging, metrics
 from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX, google_sheets_document_url
-from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
+from incognita.env import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
 
 GPS_DEFAULT_DAYS_BACK = 30
 # Date ranges this short (inclusive) render as an animated comet-trace instead of a static map.

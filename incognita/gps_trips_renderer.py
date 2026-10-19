@@ -18,7 +18,7 @@ from incognita.database import extract_properties_from_geojson, read_geojson_fil
 from incognita.gps_geometry import add_speed_to_gdf
 from incognita.observability import configure_logging, timed
 from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX
-from incognita.values import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
+from incognita.env import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
 
 logger = logging.getLogger(__name__)
 
