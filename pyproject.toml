@@ -12,28 +12,28 @@ dependencies = [
     "black",
     "flask>=3.0.0,<4.0.0",
     "geopandas>=1.0.0,<2.0.0",
-    "isort>=7.0.0",
+    "isort>=9.0.2",
     "joblib>=1.0.0,<2.0.0",
     "numpy>=2.0.0,<3.0.0",
     "psutil",
-    "opencv-python>=4.13.0.92",
+    "opencv-python>=5.0.0.93",
     "pandas>=2.3.3,<3.0.0",
     "plotly>=6.0.0,<7.0.0",
     "psutil",
     "pycountry",
     "pydeck>=0.0.0,<1.0.0",
-    "pytest>=8.0.0",
-    "pytest-cov>=4.0.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
     "requests>=2.0.0,<3.0.0",
-    "rich>=14.0.0",
-    "ruff>=0.14.10",
+    "rich>=15.0.0",
+    "ruff>=0.17.0",
     "schedule>=1.2.2",
     "spyglass",
-    "typer>=0.9.0",
+    "typer>=0.27.3",
     "tqdm>=4.0.0,<5.0.0",
-    "vulture>=2.14",
-    "pydantic>=2.13.4",
-    "python-dotenv>=1.2.2",
+    "vulture>=2.16",
+    "pydantic>=2.14.1",
+    "python-dotenv>=1.2.4",
 ]
 
 [tool.config]
@@ -63,6 +63,7 @@ health = "incognita.scripts.health_step_duplicates:main"
 
 [tool.uv]
 exclude-newer = "1 week"
+exclude-newer-package = { certifi = false }
 
 [tool.uv.sources]
 spyglass = { git = "https://github.com/momonala/spyglass.git", rev = "main" }
