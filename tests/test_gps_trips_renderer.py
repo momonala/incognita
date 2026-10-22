@@ -1,21 +1,20 @@
-from datetime import datetime, timezone
+from datetime import UTC
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
 from incognita.data_models import TripDisplayStats
-from incognita.gps_trips_renderer import (
-    _compute_month_dir_hash,
-    _get_live_month_trips,
-    get_trip_points_for_date_range,
-    get_trips_for_date_range,
-)
+from incognita.gps_trips_renderer import _compute_month_dir_hash
+from incognita.gps_trips_renderer import _get_live_month_trips
+from incognita.gps_trips_renderer import get_trip_points_for_date_range
+from incognita.gps_trips_renderer import get_trips_for_date_range
 
 
 def test_get_trip_points_for_date_range_filters_to_requested_window(monkeypatch):
     """Return only simplified vertices that fall within the requested time window."""
-    start = datetime(2024, 1, 10, 12, 0, tzinfo=timezone.utc)
-    end = datetime(2024, 1, 10, 13, 0, tzinfo=timezone.utc)
+    start = datetime(2024, 1, 10, 12, 0, tzinfo=UTC)
+    end = datetime(2024, 1, 10, 13, 0, tzinfo=UTC)
 
     monkeypatch.setattr("incognita.gps_trips_renderer._month_range", lambda *_: [(2024, 1)])
     monkeypatch.setattr(
@@ -83,8 +82,8 @@ def test_get_live_month_trips_loads_day_points_without_cache(monkeypatch, tmp_pa
     result = _get_live_month_trips(
         year=2024,
         month=2,
-        start=datetime(2024, 2, 9, tzinfo=timezone.utc),
-        end=datetime(2024, 2, 10, tzinfo=timezone.utc),
+        start=datetime(2024, 2, 9, tzinfo=UTC),
+        end=datetime(2024, 2, 10, tzinfo=UTC),
         max_gap_seconds=60.0,
         max_gap_meters=100.0,
         min_points=10,
@@ -110,8 +109,8 @@ def test_month_cache_hash_changes_when_file_added_under_existing_hour(tmp_path: 
 
 def test_get_trip_points_for_date_range_uses_month_cache_for_previous_months(monkeypatch, tmp_path: Path):
     """Keep month-level caching for months before the live month."""
-    start = datetime(2024, 1, 1, tzinfo=timezone.utc)
-    end = datetime(2024, 2, 10, tzinfo=timezone.utc)
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 2, 10, tzinfo=UTC)
     january_root = tmp_path / "2024" / "01"
     january_root.mkdir(parents=True)
     month_calls: list[tuple[int, int]] = []
@@ -153,8 +152,8 @@ def test_get_trips_for_date_range_strips_timestamps(monkeypatch):
     )
 
     paths, stats = get_trips_for_date_range(
-        datetime(2024, 1, 10, tzinfo=timezone.utc),
-        datetime(2024, 1, 11, tzinfo=timezone.utc),
+        datetime(2024, 1, 10, tzinfo=UTC),
+        datetime(2024, 1, 11, tzinfo=UTC),
     )
 
     assert paths == [[[1.0, 2.0], [3.0, 4.0]]]
@@ -166,8 +165,8 @@ def test_get_trips_for_date_range_returns_empty_stats_when_no_points(monkeypatch
     monkeypatch.setattr("incognita.gps_trips_renderer.get_trip_points_for_date_range", lambda *_, **__: None)
 
     paths, stats = get_trips_for_date_range(
-        datetime(2024, 1, 10, tzinfo=timezone.utc),
-        datetime(2024, 1, 11, tzinfo=timezone.utc),
+        datetime(2024, 1, 10, tzinfo=UTC),
+        datetime(2024, 1, 11, tzinfo=UTC),
     )
 
     assert paths is None

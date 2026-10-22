@@ -7,14 +7,12 @@ import pytest
 
 import incognita.motion_stats as motion_stats_module
 from incognita.database import DB_NAME
-from incognita.motion_stats import (
-    _read_motion_stats_cache,
-    _write_motion_stats_cache,
-    get_daily_motion_stats,
-    get_motion_stats_for_date_range,
-    get_motion_stats_range,
-    invalidate_motion_stats_cache,
-)
+from incognita.motion_stats import _read_motion_stats_cache
+from incognita.motion_stats import _write_motion_stats_cache
+from incognita.motion_stats import get_daily_motion_stats
+from incognita.motion_stats import get_motion_stats_for_date_range
+from incognita.motion_stats import get_motion_stats_range
+from incognita.motion_stats import invalidate_motion_stats_cache
 
 
 @pytest.fixture

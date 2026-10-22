@@ -1,14 +1,17 @@
 """Tests for data API utility functions."""
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC
+from datetime import datetime
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
 
 from incognita import data_api
 from incognita.config import SPYGLASS_DASHBOARD_URL
-from incognita.data_api import app, format_downtime
+from incognita.data_api import app
+from incognita.data_api import format_downtime
 from incognita.utils import BYTES_PER_MB
 
 
@@ -171,7 +174,7 @@ def test_coordinates_today_clamps_window_to_now(monkeypatch):
 
     assert response.status_code == 200
     assert response.get_json()["date"] == datetime.now().strftime("%Y-%m-%d")
-    assert abs((datetime.now(timezone.utc) - calls["end_dt"]).total_seconds()) < 60
+    assert abs((datetime.now(UTC) - calls["end_dt"]).total_seconds()) < 60
 
 
 def test_coordinates_by_date_with_no_data_is_empty_not_error(monkeypatch):
@@ -325,7 +328,8 @@ def test_snooze_sets_window_and_mutes_alerts(monkeypatch):
 
 def test_snooze_accepts_minutes(monkeypatch):
     """/snooze with minutes sets the window to that many minutes from now."""
-    from datetime import datetime, timedelta
+    from datetime import datetime
+    from datetime import timedelta
 
     import incognita.data_api as data_api
 

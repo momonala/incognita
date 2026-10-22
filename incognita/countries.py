@@ -6,7 +6,8 @@ import pycountry
 import pydeck as pdk
 
 from incognita.config import VISITED_MAP_FILENAME
-from incognita.utils import google_sheets_export_csv_url, read_google_sheets_csv
+from incognita.utils import google_sheets_export_csv_url
+from incognita.utils import read_google_sheets_csv
 
 # Only 10 is used by get_countries_df (passport); 50 and 110 are reserved for future use.
 RESOLUTION_OPTIONS = (10, 50, 110)

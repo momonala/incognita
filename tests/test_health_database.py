@@ -8,7 +8,9 @@ import pytest
 from pydantic import ValidationError
 
 from incognita.data_api import app
-from incognita.data_models import HealthKitBatch, HealthKitExportType, HealthKitSample
+from incognita.data_models import HealthKitBatch
+from incognita.data_models import HealthKitExportType
+from incognita.data_models import HealthKitSample
 from incognita.health_database import insert_health_batch
 
 

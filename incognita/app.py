@@ -1,46 +1,53 @@
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC
+from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
+from flask import Flask
+from flask import jsonify
+from flask import redirect
+from flask import render_template
+from flask import request
+from flask import send_from_directory
 
-from incognita.config import DASHBOARD_PORT, GPS_MAP_FILENAME, SPYGLASS_DASHBOARD_URL, VISITED_MAP_FILENAME
-from incognita.countries import (
-    get_countries_df,
-    get_countries_visited,
-    get_visited_stats,
-    visited_df_to_deck_map,
-)
-from incognita.data_models import HealthKitExportType, MapBackend
-from incognita.flights import (
-    flights_df_to_graph,
-    get_countries,
-    get_flight_aggregations,
-    get_flight_dist_space_stats,
-    get_flights_df,
-    get_flights_routes_for_map,
-    get_flights_stats,
-    get_flights_visited_countries_for_map,
-)
+from incognita.config import DASHBOARD_PORT
+from incognita.config import GPS_MAP_FILENAME
+from incognita.config import SPYGLASS_DASHBOARD_URL
+from incognita.config import VISITED_MAP_FILENAME
+from incognita.countries import get_countries_df
+from incognita.countries import get_countries_visited
+from incognita.countries import get_visited_stats
+from incognita.countries import visited_df_to_deck_map
+from incognita.data_models import HealthKitExportType
+from incognita.data_models import MapBackend
+from incognita.env import GOOGLE_MAPS_API_KEY
+from incognita.env import MAPBOX_API_KEY
+from incognita.flights import flights_df_to_graph
+from incognita.flights import get_countries
+from incognita.flights import get_flight_aggregations
+from incognita.flights import get_flight_dist_space_stats
+from incognita.flights import get_flights_df
+from incognita.flights import get_flights_routes_for_map
+from incognita.flights import get_flights_stats
+from incognita.flights import get_flights_visited_countries_for_map
 from incognita.gps_export import build_gps_export_context
-from incognita.gps_trips_renderer import (
-    get_latest_location_snapshot,
-    get_trip_points_for_date_range,
-    get_trips_for_date_range,
-    render_trips_to_file,
-)
-from incognita.health_database import (
-    HEALTH_DB_FILE,
-    filter_dominant_hardware_rows,
-    get_daily_health_dump,
-    get_health_meta,
-    load_metric_df,
-)
-from incognita.observability import configure_logging, metrics
-from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX, google_sheets_document_url
-from incognita.env import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
+from incognita.gps_trips_renderer import get_latest_location_snapshot
+from incognita.gps_trips_renderer import get_trip_points_for_date_range
+from incognita.gps_trips_renderer import get_trips_for_date_range
+from incognita.gps_trips_renderer import render_trips_to_file
+from incognita.health_database import HEALTH_DB_FILE
+from incognita.health_database import filter_dominant_hardware_rows
+from incognita.health_database import get_daily_health_dump
+from incognita.health_database import get_health_meta
+from incognita.health_database import load_metric_df
+from incognita.observability import configure_logging
+from incognita.observability import metrics
+from incognita.utils import BYTES_PER_MB
+from incognita.utils import DEFAULT_MAP_BOX
+from incognita.utils import google_sheets_document_url
 
 GPS_DEFAULT_DAYS_BACK = 30
 # Date ranges this short (inclusive) render as an animated comet-trace instead of a static map.
@@ -174,7 +181,7 @@ def _parse_map_backend(raw: str | None) -> MapBackend:
 def gps():
     """Render GPS map page for a configurable date range; defaults to yesterday on first load."""
     default_location = DEFAULT_MAP_BOX
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     yesterday = (now - timedelta(days=1)).strftime(DATE_FMT)
     default_start = yesterday
     default_end = yesterday
@@ -182,9 +189,9 @@ def gps():
     start_date = request.form.get("start_date", default_start)
     end_date = request.form.get("end_date", default_end)
     map_backend = _parse_map_backend(request.form.get("map_backend"))
-    start_dt = datetime.strptime(start_date, DATE_FMT).replace(tzinfo=timezone.utc)
+    start_dt = datetime.strptime(start_date, DATE_FMT).replace(tzinfo=UTC)
     end_dt = datetime.strptime(end_date, DATE_FMT).replace(
-        hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc
+        hour=23, minute=59, second=59, microsecond=999999, tzinfo=UTC
     )
     day_count = (datetime.strptime(end_date, DATE_FMT) - datetime.strptime(start_date, DATE_FMT)).days + 1
 
@@ -446,13 +453,13 @@ def live_health():
 def internal_heartbeat():
     """Receive heartbeat forwarded from data_api; updates in-memory last-seen time."""
     global _last_heartbeat_time
-    _last_heartbeat_time = datetime.now(timezone.utc)
+    _last_heartbeat_time = datetime.now(UTC)
     return jsonify({"status": "ok"}), 200
 
 
 def _staleness_color(timestamp: datetime) -> str:
     """Return CSS color class based on how old the GPS fix is."""
-    age_minutes = (datetime.now(timezone.utc) - timestamp).total_seconds() / 60
+    age_minutes = (datetime.now(UTC) - timestamp).total_seconds() / 60
     if age_minutes <= LIVE_STALENESS_GREEN_MINUTES:
         return "live-fresh"
     if age_minutes <= LIVE_STALENESS_YELLOW_MINUTES:

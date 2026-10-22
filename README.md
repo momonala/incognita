@@ -1,7 +1,6 @@
 # Incognita
 
 [![CI](https://github.com/momonala/incognita/actions/workflows/ci.yml/badge.svg)](https://github.com/momonala/incognita/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/momonala/incognita/branch/main/graph/badge.svg)](https://codecov.io/gh/momonala/incognita)
 
 Personal GPS tracking and travel visualization system. Collects location data from a GPS app ([Trace](https://github.com/momonala/Trace) or [Overland](https://github.com/aaronpk/Overland-iOS)) and HealthKit exports from an iOS export app, then provides interactive dashboards for GPS tracking, flight history, countries visited, and health metrics.
 

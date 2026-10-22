@@ -2,13 +2,16 @@
 
 import json
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from incognita.database import DB_FILE, DB_NAME, connect
+from incognita.database import DB_FILE
+from incognita.database import DB_NAME
+from incognita.database import connect
 from incognita.gps_geometry import add_speed_to_gdf
 
 MOTION_CATEGORIES = ("automotive", "cycling", "running", "stationary", "unknown", "walking")

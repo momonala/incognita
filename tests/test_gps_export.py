@@ -4,13 +4,11 @@ import pytest
 
 from incognita.app import app
 from incognita.data_models import TripDisplayStats
-from incognita.gps_export import (
-    build_gps_export_context,
-    compute_paths_distance_km,
-    format_calories,
-    format_steps,
-    validate_export_title,
-)
+from incognita.gps_export import build_gps_export_context
+from incognita.gps_export import compute_paths_distance_km
+from incognita.gps_export import format_calories
+from incognita.gps_export import format_steps
+from incognita.gps_export import validate_export_title
 
 
 def test_validate_export_title_rejects_empty():

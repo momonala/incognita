@@ -1,6 +1,7 @@
 """Build context for standalone GPS trace export pages."""
 
-from datetime import datetime, timezone
+from datetime import UTC
+from datetime import datetime
 
 from incognita.gps_geometry import get_haversine_dist
 from incognita.gps_trips_renderer import get_trips_for_date_range
@@ -33,9 +34,9 @@ def validate_export_title(title: str) -> str:
 def parse_export_dates(start_date: str, end_date: str) -> tuple[datetime, datetime, int]:
     """Parse and validate export date strings; return UTC bounds and inclusive day count."""
     try:
-        start_dt = datetime.strptime(start_date, DATE_FMT).replace(tzinfo=timezone.utc)
+        start_dt = datetime.strptime(start_date, DATE_FMT).replace(tzinfo=UTC)
         end_day = datetime.strptime(end_date, DATE_FMT)
-        end_dt = end_day.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+        end_dt = end_day.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=UTC)
     except ValueError as exc:
         raise ValueError("Dates must be YYYY-MM-DD") from exc
 

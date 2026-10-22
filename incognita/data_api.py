@@ -9,36 +9,45 @@ import os
 import shutil
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC
+from datetime import datetime
+from datetime import timedelta
 from functools import wraps
 from pathlib import Path
 
 import psutil
 import requests
 import schedule
-from flask import Flask, Response, jsonify, redirect, request
+from flask import Flask
+from flask import Response
+from flask import jsonify
+from flask import redirect
+from flask import request
 from pydantic import ValidationError
 
-from incognita.config import DASHBOARD_PORT, SPYGLASS_DASHBOARD_URL
-from incognita.data_models import (
-    DailyMotionStats,
-    HealthDump,
-    HealthDumpRange,
-    HealthKitBatch,
-    MotionStatsRange,
-)
-from incognita.database import DB_FILE, update_db
-from incognita.gps_trips_renderer import RAW_DATA_ROOT, get_trip_points_for_date_range
-from incognita.health_database import (
-    HEALTH_DB_FILE,
-    get_daily_health_dump,
-    get_health_dump_range,
-    insert_health_batch,
-)
-from incognita.motion_stats import get_daily_motion_stats, get_motion_stats_range
-from incognita.observability import configure_logging, metrics
-from incognita.utils import BYTES_PER_MB, get_ip_address
-from incognita.env import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
+from incognita.config import DASHBOARD_PORT
+from incognita.config import SPYGLASS_DASHBOARD_URL
+from incognita.data_models import DailyMotionStats
+from incognita.data_models import HealthDump
+from incognita.data_models import HealthDumpRange
+from incognita.data_models import HealthKitBatch
+from incognita.data_models import MotionStatsRange
+from incognita.database import DB_FILE
+from incognita.database import update_db
+from incognita.env import TELEGRAM_CHAT_ID
+from incognita.env import TELEGRAM_TOKEN
+from incognita.gps_trips_renderer import RAW_DATA_ROOT
+from incognita.gps_trips_renderer import get_trip_points_for_date_range
+from incognita.health_database import HEALTH_DB_FILE
+from incognita.health_database import get_daily_health_dump
+from incognita.health_database import get_health_dump_range
+from incognita.health_database import insert_health_batch
+from incognita.motion_stats import get_daily_motion_stats
+from incognita.motion_stats import get_motion_stats_range
+from incognita.observability import configure_logging
+from incognita.observability import metrics
+from incognita.utils import BYTES_PER_MB
+from incognita.utils import get_ip_address
 
 logger = logging.getLogger(__name__)
 
@@ -381,7 +390,7 @@ def _log_dump_target_diagnostics(
 
 def _get_coordinates_window(lookback_hours: int) -> tuple[datetime, datetime]:
     """Return the UTC window used by the coordinates endpoints."""
-    end_dt = datetime.now(timezone.utc)
+    end_dt = datetime.now(UTC)
     start_dt = end_dt - timedelta(hours=lookback_hours)
     return start_dt, end_dt
 
@@ -395,12 +404,12 @@ def _get_day_window(date_str: str) -> tuple[datetime, datetime]:
     day = datetime.strptime(date_str, "%Y-%m-%d")
     start_local = day.astimezone()
     end_local = (day + timedelta(days=1)).astimezone()
-    now = datetime.now(timezone.utc)
-    return start_local.astimezone(timezone.utc), min(end_local.astimezone(timezone.utc), now)
+    now = datetime.now(UTC)
+    return start_local.astimezone(UTC), min(end_local.astimezone(UTC), now)
 
 
 def _format_ts_for_api(ts: float) -> str:
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(TIMESTAMP_FMT)
+    return datetime.fromtimestamp(ts, tz=UTC).strftime(TIMESTAMP_FMT)
 
 
 def _trip_points_to_api_paths(start_dt: datetime, end_dt: datetime) -> list[list[dict[str, float | str]]]:

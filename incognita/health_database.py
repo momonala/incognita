@@ -3,12 +3,14 @@
 import json
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
 
-from incognita.data_models import HealthKitBatch, HealthKitExportType
+from incognita.data_models import HealthKitBatch
+from incognita.data_models import HealthKitExportType
 from incognita.database import connect
 from incognita.observability import metrics
 

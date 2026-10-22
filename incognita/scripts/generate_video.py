@@ -12,7 +12,8 @@ import pandas as pd
 from tqdm import tqdm
 
 from incognita.data_models import GeoCoords
-from incognita.gps_trips_renderer import RAW_DATA_ROOT, _load_month_points
+from incognita.gps_trips_renderer import RAW_DATA_ROOT
+from incognita.gps_trips_renderer import _load_month_points
 
 logging.basicConfig(
     level=logging.INFO,

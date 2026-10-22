@@ -2,7 +2,8 @@ import socket
 
 import pandas as pd
 
-from incognita.data_models import GeoBoundingBox, GeoCoords
+from incognita.data_models import GeoBoundingBox
+from incognita.data_models import GeoCoords
 
 BYTES_PER_MB = 1024 * 1024
 

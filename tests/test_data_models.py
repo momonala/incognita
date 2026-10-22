@@ -3,7 +3,9 @@
 import pytest
 from pydantic import ValidationError
 
-from incognita.data_models import GeoBoundingBox, GeoCoords, HealthKitBatch
+from incognita.data_models import GeoBoundingBox
+from incognita.data_models import GeoCoords
+from incognita.data_models import HealthKitBatch
 
 
 def test_geo_bounding_box_derives_corners_from_center():

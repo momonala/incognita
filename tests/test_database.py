@@ -4,7 +4,9 @@ import json
 import sqlite3
 from unittest.mock import patch
 
-from incognita.database import extract_properties_from_geojson, filter_by_accuracy, update_db
+from incognita.database import extract_properties_from_geojson
+from incognita.database import filter_by_accuracy
+from incognita.database import update_db
 
 
 def test_filter_by_accuracy_removes_inaccurate_points():

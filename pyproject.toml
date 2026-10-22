@@ -12,7 +12,6 @@ dependencies = [
     "black",
     "flask>=3.0.0,<4.0.0",
     "geopandas>=1.0.0,<2.0.0",
-    "isort>=9.0.2",
     "joblib>=1.0.0,<2.0.0",
     "numpy>=2.0.0,<3.0.0",
     "psutil",
@@ -97,3 +96,13 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
 ]
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF100", "PLW1510"]
+ignore = ["E501", "B008", "UP042"]
+
+[tool.ruff.lint.isort]
+force-single-line = true

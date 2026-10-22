@@ -11,9 +11,12 @@ import pydeck as pdk
 from incognita.config import FLIGHTS_MAP_FILENAME
 from incognita.countries import get_countries_df
 from incognita.data_models import Country
+from incognita.env import GOOGLE_MAPS_API_KEY
+from incognita.env import MAPBOX_API_KEY
 from incognita.gps_geometry import get_haversine_dist
-from incognita.utils import DEFAULT_MAP_BOX, google_sheets_export_csv_url, read_google_sheets_csv
-from incognita.env import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
+from incognita.utils import DEFAULT_MAP_BOX
+from incognita.utils import google_sheets_export_csv_url
+from incognita.utils import read_google_sheets_csv
 
 logger = logging.getLogger(__name__)
 

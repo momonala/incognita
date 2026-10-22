@@ -4,7 +4,9 @@ import os
 import platform
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import UTC
+from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 
 import joblib
@@ -13,12 +15,19 @@ import pandas as pd
 import pydeck as pdk
 
 from incognita.config import GPS_MAP_FILENAME
-from incognita.data_models import GeoBoundingBox, LiveLocationSnapshot, MapBackend, TripDisplayStats
-from incognita.database import extract_properties_from_geojson, read_geojson_file
+from incognita.data_models import GeoBoundingBox
+from incognita.data_models import LiveLocationSnapshot
+from incognita.data_models import MapBackend
+from incognita.data_models import TripDisplayStats
+from incognita.database import extract_properties_from_geojson
+from incognita.database import read_geojson_file
+from incognita.env import GOOGLE_MAPS_API_KEY
+from incognita.env import MAPBOX_API_KEY
 from incognita.gps_geometry import add_speed_to_gdf
-from incognita.observability import configure_logging, timed
-from incognita.utils import BYTES_PER_MB, DEFAULT_MAP_BOX
-from incognita.env import GOOGLE_MAPS_API_KEY, MAPBOX_API_KEY
+from incognita.observability import configure_logging
+from incognita.observability import timed
+from incognita.utils import BYTES_PER_MB
+from incognita.utils import DEFAULT_MAP_BOX
 
 logger = logging.getLogger(__name__)
 
@@ -584,7 +593,7 @@ def get_latest_location_snapshot(
     Returns:
         LiveLocationSnapshot with lat, lon, UTC timestamp, and day paths; or None.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for days_back in range(LATEST_POINT_LOOKBACK_DAYS):
         date = now - timedelta(days=days_back)
         day_root = _day_root(date.year, date.month, date.day)

@@ -1,12 +1,16 @@
 import logging
 import os
 import sqlite3
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
+from multiprocessing import cpu_count
 from pathlib import Path
 
 from tqdm import tqdm
 
-from incognita.database import DB_FILE, DB_NAME, create_timestamp_index, update_db
+from incognita.database import DB_FILE
+from incognita.database import DB_NAME
+from incognita.database import create_timestamp_index
+from incognita.database import update_db
 
 logger = logging.getLogger("incognita.database")
 logger.setLevel(logging.WARNING)
