@@ -238,9 +238,6 @@ def _evict_old_cache_entries() -> None:
     entries = sorted(_JOBLIB_CACHE_ROOT.iterdir(), key=lambda p: p.stat().st_atime, reverse=True)
     for old_entry in entries[_JOBLIB_CACHE_MAX_ENTRIES:]:
         shutil.rmtree(old_entry, ignore_errors=True)
-    evicted = max(0, len(entries) - _JOBLIB_CACHE_MAX_ENTRIES)
-    if evicted:
-        logger.info("[cache-evict] removed %d old joblib entries", evicted)
 
 
 def report_process_metrics() -> None:
