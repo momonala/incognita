@@ -339,7 +339,7 @@ Visit `/observability` on either server to open the spyglass dashboard.
 
 ```bash
 # Format code
-black . && isort .
+uvx ruff format . && uvx ruff check --fix .
 
 # Find days with step data from multiple hardware versions
 uv run health

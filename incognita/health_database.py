@@ -251,7 +251,7 @@ def get_daily_health_dump(date: str, db_filename: str = HEALTH_DB_FILE) -> dict:
     for export_type in HealthKitExportType:
         metric = export_type.table_name
         agg_fn, scale = _METRIC_AGG[metric]
-        sql = f"SELECT uuid, value, device_hardware_version FROM {metric} " "WHERE start >= ? AND start <= ?"
+        sql = f"SELECT uuid, value, device_hardware_version FROM {metric} WHERE start >= ? AND start <= ?"
         with connect(db_filename) as conn:
             df = pd.read_sql(sql, conn, params=[date, date + "T23:59:59Z"])
 

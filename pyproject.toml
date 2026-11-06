@@ -61,11 +61,6 @@ exclude-newer-package = { certifi = false }
 [tool.uv.sources]
 spyglass = { git = "https://github.com/momonala/spyglass.git", rev = "main" }
 
-[tool.black]
-line-length = 110
-target-version = ['py312']
-include = '\.pyi?$'
-
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true
