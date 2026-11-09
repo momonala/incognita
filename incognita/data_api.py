@@ -33,10 +33,13 @@ from incognita.data_models import HealthDumpRange
 from incognita.data_models import HealthKitBatch
 from incognita.data_models import MotionStatsRange
 from incognita.database import DB_FILE
+from incognita.database import RAW_DATA_ROOT
+from incognita.database import find_geojson_files
+from incognita.database import pack_geojson
 from incognita.database import update_db
+from incognita.database import write_geojson_file
 from incognita.env import TELEGRAM_CHAT_ID
 from incognita.env import TELEGRAM_TOKEN
-from incognita.gps_trips_renderer import RAW_DATA_ROOT
 from incognita.gps_trips_renderer import get_trip_points_for_date_range
 from incognita.health_database import HEALTH_DB_FILE
 from incognita.health_database import get_daily_health_dump
@@ -368,7 +371,7 @@ def _log_dump_target_diagnostics(
     day_path = target_path.parent
     day_stat = day_path.stat()
     hour_stat = target_path.stat()
-    day_geojson_files = sum(1 for _ in day_path.rglob("*.geojson"))
+    day_geojson_files = len(find_geojson_files(day_path))
     logger.debug(
         "[dump-cache-diagnostics] wrote_file=%s file=%s locations=%s day_dir=%s day_size=%s "
         "day_mtime_ns=%s hour_dir=%s hour_size=%s hour_mtime_ns=%s day_geojson_files=%s",
@@ -451,12 +454,11 @@ def dump():
 
     # Generate deterministic filename using content hash
     content_hash = get_content_hash(locations)
-    file_name = target_path / f"{year}{month}{day}-{hour}{minute}00-{content_hash}.geojson"
+    file_name = target_path / f"{year}{month}{day}-{hour}{minute}00-{content_hash}.geojson.gz"
 
     # Only write if file doesn't exist (avoid duplicates)
     if not file_name.exists():
-        with open(file_name, "w") as fh:
-            json.dump(json_data, fh, indent=2, ensure_ascii=False)
+        write_geojson_file(file_name, pack_geojson(json_data))
         logger.debug("Wrote file_name=%s", file_name)
         update_db(str(file_name))
         wrote_file = True

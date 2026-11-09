@@ -98,10 +98,10 @@ def test_month_cache_hash_changes_when_file_added_under_existing_hour(tmp_path: 
     """Invalidate cached completed-month loads when a nested GeoJSON file is added."""
     hour_root = tmp_path / "2024" / "02" / "09" / "12"
     hour_root.mkdir(parents=True)
-    (hour_root / "first.geojson").write_text("{}", encoding="utf-8")
+    (hour_root / "first.geojson.gz").write_text("{}", encoding="utf-8")
     first_hash = _compute_month_dir_hash(tmp_path / "2024" / "02")
 
-    (hour_root / "second.geojson").write_text("{}", encoding="utf-8")
+    (hour_root / "second.geojson.gz").write_text("{}", encoding="utf-8")
     second_hash = _compute_month_dir_hash(tmp_path / "2024" / "02")
 
     assert second_hash != first_hash

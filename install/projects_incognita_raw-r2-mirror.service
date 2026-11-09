@@ -1,0 +1,10 @@
+[Unit]
+Description=Incognita raw data mirror to Cloudflare R2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/mnalavadi/incognita
+ExecStart=/home/mnalavadi/.local/bin/uv run -m incognita.scripts.mirror_raw_to_r2
+User=mnalavadi

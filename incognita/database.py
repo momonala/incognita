@@ -1,6 +1,12 @@
+import gzip
 import json
 import logging
+import os
+import platform
 import sqlite3
+import uuid
+import zlib
+from pathlib import Path
 
 import pandas as pd
 
@@ -12,6 +18,11 @@ DB_FILE = "data/geo_data.db"
 DB_NAME = "overland"
 
 MIN_HORIZONTAL_ACCURACY = 200.0
+
+if platform.system() == "Darwin":
+    RAW_DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "incognita_raw_data"
+else:
+    RAW_DATA_ROOT = Path(__file__).resolve().parent.parent / "incognita_raw_data"
 
 
 def connect(db_filename: str) -> sqlite3.Connection:
@@ -73,14 +84,46 @@ def create_timestamp_index() -> None:
     logger.info("Added index idx_timestamp")
 
 
+def find_geojson_files(root: Path) -> list[Path]:
+    """Return every raw gzipped GeoJSON file under root, sorted by path."""
+    return sorted(root.rglob("*.geojson.gz"))
+
+
+def pack_geojson(payload: dict) -> bytes:
+    """Serialize a GeoJSON payload as compact, gzipped JSON."""
+    compact = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return gzip.compress(compact, mtime=0)
+
+
+def write_geojson_file(path: Path, packed: bytes) -> None:
+    """Write packed GeoJSON so path holds either nothing or the whole file, even after a power cut.
+
+    The data is on disk before the rename and the rename is on disk before this returns.
+    """
+    temp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(temp, "wb") as f:
+            f.write(packed)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
+    directory = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
 def read_geojson_file(filename: str) -> list[dict] | None:
     """Return parsed GeoJSON location entries with source filename added, or None on parse error."""
-    with open(filename, encoding="utf-8") as f:
+    with gzip.open(filename, "rt", encoding="utf-8") as f:
         try:
             data = json.load(f)
             raw_geojson = data["locations"]
             return [{**d, "geojson_file": filename} for d in raw_geojson]
-        except (KeyError, json.JSONDecodeError) as e:
+        except (KeyError, json.JSONDecodeError, gzip.BadGzipFile, EOFError, zlib.error) as e:
             logger.error("Failed parsing %s: %s", filename, e)
             return None
 

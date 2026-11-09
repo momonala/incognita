@@ -1,5 +1,6 @@
 """Tests for data API utility functions."""
 
+import gzip
 import json
 from datetime import UTC
 from datetime import datetime
@@ -399,6 +400,18 @@ def test_dump_reports_received_and_written(mock_metrics, monkeypatch, tmp_path):
     mock_metrics.increment.assert_any_call("files_received")
     mock_metrics.gauge.assert_any_call("locations_count", 1)
     mock_metrics.increment.assert_any_call("wrote_file")
+
+
+def test_dump_stores_payload_as_a_single_gzipped_file(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("incognita.data_api.update_db", lambda filename: None)
+
+    with app.test_client() as client:
+        client.post("/dump", data=json.dumps(_dump_payload()), content_type="application/json")
+
+    (written,) = (p for p in (tmp_path / "incognita_raw_data").rglob("*") if p.is_file())
+    assert written.name.endswith(".geojson.gz")
+    assert json.loads(gzip.decompress(written.read_bytes())) == _dump_payload()
 
 
 @patch("incognita.data_api.metrics")

@@ -12,7 +12,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from incognita.data_models import GeoCoords
-from incognita.gps_trips_renderer import RAW_DATA_ROOT
+from incognita.database import RAW_DATA_ROOT
 from incognita.gps_trips_renderer import _load_month_points
 
 logging.basicConfig(
@@ -39,7 +39,7 @@ LAT_HALF_WIDTH = 0.205 * 0.75
 
 
 def _load_all_points_from_files() -> pd.DataFrame:
-    """Load all raw GPS points from incognita_raw_data/YYYY/MM/*.geojson."""
+    """Load all raw GPS points from incognita_raw_data/YYYY/MM/*.geojson.gz."""
     if not RAW_DATA_ROOT.exists():
         logger.info("[_load_all_points_from_files] RAW_DATA_ROOT %s does not exist", RAW_DATA_ROOT)
         return pd.DataFrame(columns=["lon", "lat", "timestamp"])

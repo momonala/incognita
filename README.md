@@ -275,13 +275,60 @@ incognita_raw_data/
     └── MM/
         └── DD/
             └── HH/
-                └── YYYYMMDD-HHMM00-{hash}.geojson
+                └── YYYYMMDD-HHMM00-{hash}.geojson.gz
 ```
+
+Each file is the posted GeoJSON as compact JSON (no indentation), gzipped. Read one with
+`gzip.open(path, "rt")` or `zcat file.geojson.gz`.
 
 Files are named using:
 - Date/time prefix: `YYYYMMDD-HHMM00`
 - Content hash: Deterministic hash based on first/last timestamp + count
 - Prevents duplicates: Same content = same filename
+
+### Migrating plain `.geojson` files to gzip
+
+Converts a tree of plain `.geojson` files (the pre-2026-11 format, and what the frozen R2 history
+restores as). It writes a compact `.geojson.gz` next to each plain file, checks the copy decompresses
+to identical JSON, then deletes the original and keeps the file's mtime. Unreadable files are left in
+place and listed at the end. Safe to re-run.
+
+```bash
+uv run python -m incognita.scripts.migrate_raw_to_gzip --dry-run
+uv run python -m incognita.scripts.migrate_raw_to_gzip
+```
+
+The data API only reads `.geojson.gz`, so stop the service before migrating and start it after the new code is deployed.
+Each converted file is fsynced before its original is deleted. On the Pi's SD card that is the slow part: about
+2.7 ms per file with the default 16 workers, so roughly 20 minutes of fsync for 406k files.
+
+### Backup to Cloudflare R2
+
+`projects_incognita_raw-r2-mirror.timer` runs `incognita.scripts.mirror_raw_to_r2` every hour. It
+uploads every `.geojson.gz` modified since the last successful run (minus a 15-minute overlap) to
+`r2:incognita/raw/`, one object per file at the same relative path, then records the run's start time in
+`~/.local/state/incognita-r2-mirror/last_success`. A failed run leaves that marker alone, so the next run
+retries the same files, and the unit shows as failed.
+
+- Selection is by file mtime, so batches the phone sends late into an old day's directory are still picked up.
+- It only ever runs `rclone copy` with `--immutable`: nothing in R2 is deleted or overwritten. Never use `rclone sync` here; R2 keeps no versions.
+- The first run needs a start point and refuses to guess:
+
+```bash
+uv run -m incognita.scripts.mirror_raw_to_r2 --since "2026-11-08 21:30:00"   # local time
+journalctl -u projects_incognita_raw-r2-mirror.service -n 20                  # last runs
+```
+
+Data from before the mirror existed is in `r2:incognita/raw_data/YYYY/MM/DD.tar.zst`: one archive per day,
+plain indented `.geojson`, frozen.
+
+### Restore from R2
+
+1. Download and extract the day archives into `incognita_raw_data/`:
+   `rclone copy r2:incognita/raw_data archives/` then `zstd -dc DAY.tar.zst | tar -x -C incognita_raw_data` for each.
+2. Convert them: `uv run python -m incognita.scripts.migrate_raw_to_gzip`. The app ignores plain `.geojson`, so skipping this leaves the maps empty.
+3. Copy the live mirror on top: `rclone copy r2:incognita/raw incognita_raw_data/`.
+4. Rebuild SQLite: `uv run refresh-db`.
 
 ### Database Refresh
 
@@ -291,7 +338,7 @@ uv run refresh-db
 # or: python -m incognita.scripts.refresh```
 
 This script:
-- Processes all GeoJSON files in `incognita_raw_data/`
+- Processes all `.geojson.gz` files in `incognita_raw_data/`
 - Uses parallel processing for speed
 - Creates SQLite database with WAL mode
 - Filters by horizontal accuracy
@@ -302,7 +349,9 @@ This script:
 
 | Path | Purpose |
 |------|---------|
-| `../incognita_raw_data/YYYY/MM/DD/HH/` | Organized GeoJSON files by date/hour |
+| `../incognita_raw_data/YYYY/MM/DD/HH/` | Raw `.geojson.gz` files by date/hour (inside the project directory on the Pi) |
+| `r2:incognita/raw/` | Hourly per-file mirror of the raw tree |
+| `r2:incognita/raw_data/` | Frozen per-day archives of the raw tree from before the mirror (plain `.geojson`) |
 | `data/geo_data.db` | SQLite database with all location data (tracked via Git LFS) |
 | `.cache/` | Joblib function cache (not version controlled) |
 

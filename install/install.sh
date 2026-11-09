@@ -20,7 +20,7 @@ service_name=$(uv run config --project-name)
 prefix="projects_${service_name}_"
 data_api_service="${prefix}data-api"
 app_service="projects_${service_name}"
-backup_scheduler_service="${prefix}data-backup-scheduler"
+r2_mirror_unit="${prefix}raw-r2-mirror"
 data_api_port=$(uv run config --data-api-port)
 dashboard_port=$(uv run config --dashboard-port)
 
@@ -36,12 +36,14 @@ echo "📋 Configuration:"
 echo "Copying service file to systemd directory"
 sudo cp install/${data_api_service}.service  /lib/systemd/system/${data_api_service}.service
 sudo cp install/${app_service}.service /lib/systemd/system/${app_service}.service
-sudo cp install/${backup_scheduler_service}.service /lib/systemd/system/${backup_scheduler_service}.service
+sudo cp install/${r2_mirror_unit}.service /lib/systemd/system/${r2_mirror_unit}.service
+sudo cp install/${r2_mirror_unit}.timer /lib/systemd/system/${r2_mirror_unit}.timer
 
 echo "Setting permissions for the service file"
 sudo chmod 644 /lib/systemd/system/${data_api_service}.service
 sudo chmod 644 /lib/systemd/system/${app_service}.service
-sudo chmod 644 /lib/systemd/system/${backup_scheduler_service}.service
+sudo chmod 644 /lib/systemd/system/${r2_mirror_unit}.service
+sudo chmod 644 /lib/systemd/system/${r2_mirror_unit}.timer
 
 echo "Reloading systemd daemon"
 sudo systemctl daemon-reload
@@ -50,17 +52,17 @@ sudo systemctl daemon-reexec
 echo "Enabling services"
 sudo systemctl enable ${data_api_service}.service
 sudo systemctl enable ${app_service}.service
-sudo systemctl enable ${backup_scheduler_service}.service
+sudo systemctl enable --now ${r2_mirror_unit}.timer
+echo "R2 mirror: before the first hourly run, set its start point once with"
+echo "  uv run -m incognita.scripts.mirror_raw_to_r2 --since 'YYYY-MM-DD HH:MM:SS'"
 
 echo "Restarting services"
 sudo systemctl restart ${data_api_service}.service
 sudo systemctl restart ${app_service}.service
-sudo systemctl restart ${backup_scheduler_service}.service
 
 echo "Checking status of services"
 sudo systemctl status ${data_api_service}.service --no-pager
 sudo systemctl status ${app_service}.service --no-pager
-sudo systemctl status ${backup_scheduler_service}.service --no-pager
 
 
 echo "Adding Cloudflared service"

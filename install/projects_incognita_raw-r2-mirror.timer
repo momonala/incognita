@@ -1,0 +1,9 @@
+[Unit]
+Description=Hourly incognita raw data mirror to Cloudflare R2
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

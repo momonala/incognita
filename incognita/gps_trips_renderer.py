@@ -1,7 +1,6 @@
 import hashlib
 import logging
 import os
-import platform
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC
@@ -19,7 +18,9 @@ from incognita.data_models import GeoBoundingBox
 from incognita.data_models import LiveLocationSnapshot
 from incognita.data_models import MapBackend
 from incognita.data_models import TripDisplayStats
+from incognita.database import RAW_DATA_ROOT
 from incognita.database import extract_properties_from_geojson
+from incognita.database import find_geojson_files
 from incognita.database import read_geojson_file
 from incognita.env import GOOGLE_MAPS_API_KEY
 from incognita.env import MAPBOX_API_KEY
@@ -31,11 +32,6 @@ from incognita.utils import DEFAULT_MAP_BOX
 
 logger = logging.getLogger(__name__)
 
-is_mac = platform.system() == "Darwin"
-if is_mac:
-    RAW_DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "incognita_raw_data"
-else:
-    RAW_DATA_ROOT = Path(__file__).resolve().parent.parent / "incognita_raw_data"
 
 GPS_POINT_COLUMNS = ["lon", "lat", "timestamp"]
 TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
@@ -149,7 +145,7 @@ def _month_range(start: datetime, end: datetime) -> list[tuple[int, int]]:
 def _compute_geojson_tree_hash(root: Path) -> str:
     """Hash recursive GeoJSON file metadata for cache invalidation."""
     hasher = hashlib.sha256()
-    for path in sorted(root.rglob("*.geojson")):
+    for path in find_geojson_files(root):
         stat = path.stat()
         hasher.update(path.relative_to(root).as_posix().encode("utf-8"))
         hasher.update(b"\0")
@@ -166,7 +162,7 @@ def _log_cache_key_diagnostics(scope_label: str, root: Path, cache_hash: str) ->
         return
 
     stat = root.stat()
-    geojson_file_count = sum(1 for _ in root.rglob("*.geojson"))
+    geojson_file_count = len(find_geojson_files(root))
     logger.debug(
         "[coordinates-cache] lookup %s root=%s hash=%s dir_size=%s dir_mtime_ns=%s geojson_files=%s",
         scope_label,
@@ -220,7 +216,7 @@ def _load_points_from_root(root: Path, scope_label: str) -> pd.DataFrame:
         logger.debug("No incognita_raw_data directory for %s (%s)", scope_label, root)
         return pd.DataFrame(columns=GPS_POINT_COLUMNS)
 
-    paths = list(root.rglob("*.geojson"))
+    paths = find_geojson_files(root)
     max_workers = min(MAX_WORKERS_CAP, (os.cpu_count() or 1) + CPU_EXTRA_WORKERS)
     frames: list[pd.DataFrame] = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:

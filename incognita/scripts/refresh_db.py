@@ -10,6 +10,7 @@ from tqdm import tqdm
 from incognita.database import DB_FILE
 from incognita.database import DB_NAME
 from incognita.database import create_timestamp_index
+from incognita.database import find_geojson_files
 from incognita.database import update_db
 
 logger = logging.getLogger("incognita.database")
@@ -56,7 +57,7 @@ def main() -> None:
         """)
         conn.commit()
 
-    geo_files = sorted(root_dir.rglob("*.geojson"))
+    geo_files = find_geojson_files(root_dir)
     print(f"Found {len(geo_files):,} files to process")
 
     # Process files in parallel
