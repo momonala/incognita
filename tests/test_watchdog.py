@@ -225,7 +225,7 @@ def test_snooze_with_no_tick_inside_window_keeps_escalation_level(watchdog, cloc
 def test_resnooze_before_any_tick_keeps_escalation_level(watchdog, clock):
     drive_to_level(watchdog, clock, 2)
     clock.at(400)
-    watchdog.snooze(1)
+    watchdog.snooze(120)
     clock.at(401)
     watchdog.snooze(1)
     assert watchdog.state == Snoozed(NOON + timedelta(seconds=461), 2)

@@ -85,7 +85,8 @@ def test_insert_health_batch_routes_by_type(health_db):
     assert flights_rows == [("BBB", 3.0)]
 
 
-def test_insert_health_batch_dedupes_by_uuid(health_db):
+@patch("incognita.health_database.metrics")
+def test_insert_health_batch_dedupes_by_uuid(mock_metrics, health_db):
     sample = _sample(
         type="Distance",
         uuid="CCC",
@@ -105,6 +106,7 @@ def test_insert_health_batch_dedupes_by_uuid(health_db):
 
     assert inserted == 0
     assert skipped == 1
+    mock_metrics.increment.assert_any_call("skipped", 1)
 
     with sqlite3.connect(health_db) as conn:
         row = conn.execute("SELECT batch_index FROM distance WHERE uuid = 'CCC'").fetchone()
