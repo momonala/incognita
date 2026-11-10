@@ -186,12 +186,12 @@ class Watchdog:
             return self._last_heartbeat
 
     def muted_reason(self, now: datetime) -> str | None:
-        """Why alerts are suppressed at `now` (active snooze or quiet hours, 0:00–6:59), else None."""
+        """Why alerts are suppressed at `now` (active snooze or quiet hours, 23:00–06:59), else None."""
         with self._lock:
             state = self._state
         if isinstance(state, Snoozed) and now < state.until:
             return f"snoozed until {state.until:%H:%M}"
-        if now.hour < 7 or now.hour > 23:
+        if now.hour >= 23 or now.hour < 7:
             return "sleepy time"
         return None
 

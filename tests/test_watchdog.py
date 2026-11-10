@@ -279,11 +279,51 @@ def test_muted_reason(watchdog, clock):
     assert watchdog.muted_reason(datetime(2025, 1, 1, 2, 0)) == "sleepy time"
     assert watchdog.muted_reason(datetime(2025, 1, 1, 6, 59)) == "sleepy time"
     assert watchdog.muted_reason(datetime(2025, 1, 1, 7, 0)) is None
-    assert watchdog.muted_reason(datetime(2025, 1, 1, 23, 59)) is None
+    assert watchdog.muted_reason(datetime(2025, 1, 1, 22, 59)) is None
+    assert watchdog.muted_reason(datetime(2025, 1, 1, 23, 0)) == "sleepy time"
+    assert watchdog.muted_reason(datetime(2025, 1, 1, 23, 59)) == "sleepy time"
+    assert watchdog.muted_reason(datetime(2025, 1, 1, 0, 0)) == "sleepy time"
 
     watchdog.snooze(30)
     assert watchdog.muted_reason(NOON + timedelta(minutes=29)) == "snoozed until 12:30"
     assert watchdog.muted_reason(NOON + timedelta(minutes=30)) is None
+
+
+@pytest.mark.parametrize(
+    "alert_at,sends",
+    [
+        (datetime(2025, 1, 1, 22, 59, 59), True),
+        (datetime(2025, 1, 1, 23, 0, 0), False),
+        (datetime(2025, 1, 2, 6, 59, 59), False),
+        (datetime(2025, 1, 2, 7, 0, 0), True),
+    ],
+)
+def test_quiet_hours_boundaries(alert_at, sends):
+    clock = FakeClock(alert_at - timedelta(seconds=60))
+    notifier = FakeNotifier()
+    watchdog = Watchdog(notifier, clock=clock)
+
+    clock.now = alert_at
+    watchdog.on_tick()
+    assert (notifier.sent != []) is sends
+    assert watchdog.state == Down(1)
+
+
+def test_level_advances_into_quiet_hours_without_sending():
+    clock = FakeClock(datetime(2025, 1, 1, 22, 58, 0))
+    notifier = FakeNotifier()
+    watchdog = Watchdog(notifier, clock=clock)
+
+    clock.now = datetime(2025, 1, 1, 22, 59, 0)
+    watchdog.on_tick()
+    assert len(notifier.sent) == 1
+    assert watchdog.state == Down(1)
+
+    clock.now = datetime(2025, 1, 1, 23, 3, 0)
+    watchdog.on_tick()
+    assert len(notifier.sent) == 1
+    assert notifier.deleted == []
+    assert watchdog.state == Down(2)
 
 
 def test_quiet_hours_suppress_sending_but_still_escalate():
