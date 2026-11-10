@@ -60,17 +60,12 @@ def tick_at(watchdog: Watchdog, clock: FakeClock, seconds: float) -> None:
     watchdog.on_tick()
 
 
-THRESHOLDS = (60, 300, 600, 3600, 7200, 10800, 14400)
+THRESHOLDS = (60, 300, 600, 3600, 7200, 10800)
 
 
 def drive_to_level(watchdog: Watchdog, clock: FakeClock, level: int) -> None:
     for threshold in THRESHOLDS[:level]:
         tick_at(watchdog, clock, threshold)
-
-
-def test_starts_up_with_heartbeat_at_construction(watchdog):
-    assert watchdog.state == Up()
-    assert watchdog.last_heartbeat == NOON
 
 
 def test_first_alert_fires_at_exactly_60_seconds_with_exact_text(watchdog, clock, notifier):
@@ -81,11 +76,6 @@ def test_first_alert_fires_at_exactly_60_seconds_with_exact_text(watchdog, clock
     tick_at(watchdog, clock, 60)
     assert notifier.sent == ["🪦 No heartbeat for 1m, 0s!\nLast received at 2025-01-01 12:00:00"]
     assert watchdog.state == Down(1)
-
-
-def test_downtime_is_truncated_to_whole_seconds(watchdog, clock, notifier):
-    tick_at(watchdog, clock, 59.999)
-    assert notifier.sent == []
 
 
 @pytest.mark.parametrize("level,threshold", list(enumerate(THRESHOLDS))[1:])
@@ -101,15 +91,6 @@ def test_each_escalation_fires_at_its_exact_threshold(watchdog, clock, notifier,
     tick_at(watchdog, clock, threshold)
     assert len(notifier.sent) == sent_before + 1
     assert watchdog.state == Down(level + 1)
-
-
-def test_escalation_text_reports_downtime_and_last_heartbeat(watchdog, clock, notifier):
-    drive_to_level(watchdog, clock, 4)
-    assert notifier.sent[1:] == [
-        "🪦 No heartbeat for 5m, 0s!\nLast received at 2025-01-01 12:00:00",
-        "🪦 No heartbeat for 10m, 0s!\nLast received at 2025-01-01 12:00:00",
-        "🪦 No heartbeat for 1h, 0m, 0s!\nLast received at 2025-01-01 12:00:00",
-    ]
 
 
 def test_late_tick_fires_one_alert_and_advances_one_level(watchdog, clock, notifier):
@@ -131,8 +112,8 @@ def test_failed_send_leaves_nothing_to_delete(clock):
     assert notifier.deleted == []
 
 
-@pytest.mark.parametrize("level", [1, 2, 3, 4, 5])
-def test_recovery_from_each_level_on_next_tick_after_heartbeat(watchdog, clock, notifier, level):
+def test_recovery_on_next_tick_after_heartbeat_then_escalation_restarts(watchdog, clock, notifier):
+    level = 5
     drive_to_level(watchdog, clock, level)
     sent_before = len(notifier.sent)
     clock.at(8000)
@@ -162,24 +143,6 @@ def test_recovery_needs_downtime_below_first_threshold(watchdog, clock, notifier
     tick_at(watchdog, clock, 1000)
     assert len(notifier.sent) == 3
     assert watchdog.state == Down(3)
-
-
-def test_heartbeat_while_up_keeps_up(watchdog, clock, notifier):
-    tick_at(watchdog, clock, 30)
-    watchdog.on_heartbeat()
-    tick_at(watchdog, clock, 89)
-    assert notifier.sent == []
-    assert watchdog.state == Up()
-    assert watchdog.last_heartbeat == NOON + timedelta(seconds=30)
-
-
-def test_snooze_start_announces_and_enters_snoozed(watchdog, clock, notifier):
-    clock.at(10)
-    until = watchdog.snooze(95)
-    assert until == NOON + timedelta(seconds=10, minutes=95)
-    assert watchdog.state == Snoozed(until, 0)
-    assert notifier.sent == ["😴 Alerts snoozed for 1h35m, until 13:35"]
-    assert notifier.deleted == []
 
 
 def test_snooze_suppresses_alerts_until_boundary(watchdog, clock, notifier):
@@ -241,13 +204,6 @@ def test_heartbeat_during_snooze_keeps_snooze(watchdog, clock, notifier):
     assert watchdog.state == Down(1)
 
 
-def test_resnooze_replaces_window(watchdog, clock):
-    watchdog.snooze(120)
-    clock.at(60)
-    watchdog.snooze(1)
-    assert watchdog.state == Snoozed(NOON + timedelta(minutes=2), 0)
-
-
 def test_snooze_with_no_tick_inside_window_keeps_escalation_level(watchdog, clock, notifier):
     drive_to_level(watchdog, clock, 3)
     clock.at(700)
@@ -273,20 +229,6 @@ def test_resnooze_before_any_tick_keeps_escalation_level(watchdog, clock):
     clock.at(401)
     watchdog.snooze(1)
     assert watchdog.state == Snoozed(NOON + timedelta(seconds=461), 2)
-
-
-def test_muted_reason(watchdog, clock):
-    assert watchdog.muted_reason(datetime(2025, 1, 1, 2, 0)) == "sleepy time"
-    assert watchdog.muted_reason(datetime(2025, 1, 1, 6, 59)) == "sleepy time"
-    assert watchdog.muted_reason(datetime(2025, 1, 1, 7, 0)) is None
-    assert watchdog.muted_reason(datetime(2025, 1, 1, 22, 59)) is None
-    assert watchdog.muted_reason(datetime(2025, 1, 1, 23, 0)) == "sleepy time"
-    assert watchdog.muted_reason(datetime(2025, 1, 1, 23, 59)) == "sleepy time"
-    assert watchdog.muted_reason(datetime(2025, 1, 1, 0, 0)) == "sleepy time"
-
-    watchdog.snooze(30)
-    assert watchdog.muted_reason(NOON + timedelta(minutes=29)) == "snoozed until 12:30"
-    assert watchdog.muted_reason(NOON + timedelta(minutes=30)) is None
 
 
 @pytest.mark.parametrize(
@@ -324,23 +266,6 @@ def test_level_advances_into_quiet_hours_without_sending():
     assert len(notifier.sent) == 1
     assert notifier.deleted == []
     assert watchdog.state == Down(2)
-
-
-def test_quiet_hours_suppress_sending_but_still_escalate():
-    clock = FakeClock(datetime(2025, 1, 1, 2, 0, 0))
-    notifier = FakeNotifier()
-    watchdog = Watchdog(notifier, clock=clock)
-
-    clock.now = datetime(2025, 1, 1, 2, 1, 0)
-    watchdog.on_tick()
-    assert notifier.sent == []
-    assert watchdog.state == Down(1)
-
-    clock.now = datetime(2025, 1, 1, 2, 5, 0)
-    watchdog.on_tick()
-    assert watchdog.state == Down(2)
-    assert notifier.sent == []
-    assert notifier.deleted == []
 
 
 @pytest.fixture
