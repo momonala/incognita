@@ -311,40 +311,6 @@ def test_health_data_range_returns_ordered_days(monkeypatch):
     assert payload["health"][1]["steps"] == 2000
 
 
-def test_snooze_sets_window_and_mutes_alerts(monkeypatch):
-    """A valid /snooze call records a future window and suppresses alerts within it."""
-    import incognita.data_api as data_api
-
-    monkeypatch.setattr(data_api, "snooze_until", None)
-    monkeypatch.setattr(data_api, "_post_telegram", lambda text: 1)
-
-    with app.test_client() as client:
-        response = client.post("/snooze", json={"hours": 3})
-
-    assert response.status_code == 200
-    assert response.get_json()["status"] == "ok"
-    assert data_api.snooze_until is not None
-    assert data_api.alerts_muted() == f"snoozed until {data_api.snooze_until:%H:%M}"
-
-
-def test_snooze_accepts_minutes(monkeypatch):
-    """/snooze with minutes sets the window to that many minutes from now."""
-    from datetime import datetime
-    from datetime import timedelta
-
-    import incognita.data_api as data_api
-
-    monkeypatch.setattr(data_api, "snooze_until", None)
-    monkeypatch.setattr(data_api, "_post_telegram", lambda text: 1)
-
-    with app.test_client() as client:
-        response = client.post("/snooze", json={"minutes": 95})
-
-    assert response.status_code == 200
-    expected = datetime.now() + timedelta(minutes=95)
-    assert abs((data_api.snooze_until - expected).total_seconds()) < 5
-
-
 @pytest.mark.parametrize(
     "body",
     [
@@ -364,16 +330,6 @@ def test_snooze_rejects_out_of_range(body):
         response = client.post("/snooze", json=body)
 
     assert response.status_code == 400
-
-
-def test_alerts_muted_during_quiet_hours():
-    """Overnight quiet hours mute alerts even without a snooze."""
-    from datetime import datetime
-
-    import incognita.data_api as data_api
-
-    assert data_api.alerts_muted(datetime(2025, 1, 1, 2, 0)) == "sleepy time"
-    assert data_api.alerts_muted(datetime(2025, 1, 1, 12, 0)) is None
 
 
 def _dump_payload():

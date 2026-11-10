@@ -1,6 +1,5 @@
 """Basic HTTP server to receive and store GPS incognita_raw_data from iPhone Overland app."""
 
-import bisect
 import gc
 import hashlib
 import json
@@ -9,11 +8,14 @@ import os
 import shutil
 import threading
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
 from functools import wraps
 from pathlib import Path
+from typing import Protocol
 
 import psutil
 import requests
@@ -57,19 +59,12 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 overland_port = 5003
-last_heartbeat = datetime.now()
-
-# When set and in the future, the watchdog stays quiet. Set via POST /snooze when the
-# phone is intentionally offline so missing heartbeats don't trigger alerts.
-snooze_until: datetime | None = None
 
 DEFAULT_LOOKBACK_HOURS = 24
 MAX_STATS_LOOKBACK_DAYS = 366
 TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
-# Global variable to store the last sent Telegram message ID
-last_message_id: int | None = None
-last_message_lock = threading.Lock()
+ALERT_SCHEDULE_SEC = (60, 300, 600, 3600)
 
 
 def format_downtime(seconds: float) -> str:
@@ -103,65 +98,163 @@ def log_payload_size(f):
     return decorated_function
 
 
-def alerts_muted(now: datetime | None = None) -> str | None:
-    """Return a reason string if alerts should be suppressed right now, else None.
+class Notifier(Protocol):
+    def send(self, message: str) -> int | None: ...
 
-    Covers two cases that both mean "don't bother me": an active snooze window, and
-    the hardcoded overnight quiet hours (11pm–7am).
+    def delete(self, message_id: int) -> None: ...
+
+
+class TelegramNotifier:
+    def send(self, message: str) -> int | None:
+        """Send a Telegram message, returning its message_id (or None on failure)."""
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
+        try:
+            response = requests.post(url, json=payload, timeout=10)
+            response_data = response.json()
+            if response_data.get("ok") and "result" in response_data:
+                return response_data["result"]["message_id"]
+            logger.error(f"Failed to send Telegram message: {response_data}")
+        except Exception as e:
+            logger.error(f"Failed to send Telegram message: {e}")
+        return None
+
+    def delete(self, message_id: int) -> None:
+        delete_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteMessage"
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "message_id": message_id}
+        try:
+            response = requests.post(delete_url, json=payload, timeout=10)
+            if response.json().get("ok"):
+                logger.debug(f"🗑️ Deleted previous message {message_id}")
+            else:
+                logger.warning(f"Failed to delete previous message {message_id}: {response.json()}")
+        except Exception as e:
+            logger.error(f"Error deleting previous message {message_id}: {e}")
+
+
+@dataclass(frozen=True)
+class Up:
+    pass
+
+
+@dataclass(frozen=True)
+class Down:
+    level: int
+
+
+@dataclass(frozen=True)
+class Snoozed:
+    until: datetime
+
+
+WatchdogState = Up | Down | Snoozed
+
+
+def alert_threshold_sec(level: int) -> int:
+    """Downtime at which the alert for `level` fires: the schedule, then every further hour."""
+    if level < len(ALERT_SCHEDULE_SEC):
+        return ALERT_SCHEDULE_SEC[level]
+    return ALERT_SCHEDULE_SEC[-1] + 3600 * (level - len(ALERT_SCHEDULE_SEC) + 1)
+
+
+class Watchdog:
+    """Heartbeat watchdog: escalating downtime alerts, snoozable, one live alert message in the chat.
+
+    `level` in Down is the number of alerts raised since the last recovery; the next one fires at
+    `alert_threshold_sec(level)`. Recovery happens on the first tick that sees the heartbeat
+    younger than the first threshold.
     """
-    now = now or datetime.now()
-    if snooze_until is not None and now < snooze_until:
-        return f"snoozed until {snooze_until:%H:%M}"
-    if now.hour < 7 or now.hour > 23:
-        return "sleepy time"
-    return None
+
+    def __init__(self, notifier: Notifier, clock: Callable[[], datetime] = datetime.now):
+        self._notifier = notifier
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._state: WatchdogState = Up()
+        self._last_heartbeat = clock()
+        self._last_message_id: int | None = None
+
+    @property
+    def state(self) -> WatchdogState:
+        with self._lock:
+            return self._state
+
+    @property
+    def last_heartbeat(self) -> datetime:
+        with self._lock:
+            return self._last_heartbeat
+
+    def muted_reason(self, now: datetime) -> str | None:
+        """Why alerts are suppressed at `now` (active snooze or 11pm–7am quiet hours), else None."""
+        with self._lock:
+            state = self._state
+        if isinstance(state, Snoozed) and now < state.until:
+            return f"snoozed until {state.until:%H:%M}"
+        if now.hour < 7 or now.hour > 23:
+            return "sleepy time"
+        return None
+
+    def on_heartbeat(self) -> None:
+        with self._lock:
+            self._last_heartbeat = self._clock()
+
+    def snooze(self, minutes: int) -> datetime:
+        with self._lock:
+            until = self._clock() + timedelta(minutes=minutes)
+            self._state = Snoozed(until)
+        duration = f"{minutes // 60}h{minutes % 60:02d}m"
+        logger.info(f"😴 Alerts snoozed for {duration}, until {until:%Y-%m-%d %H:%M:%S}")
+        self._notifier.send(f"😴 Alerts snoozed for {duration}, until {until:%H:%M}")
+        return until
+
+    def on_tick(self) -> None:
+        now = self._clock()
+        with self._lock:
+            alert = self._advance(now)
+        if alert is not None:
+            self._send_alert(alert)
+
+    def _advance(self, now: datetime) -> str | None:
+        match self._state:
+            case Snoozed(until) if now < until:
+                return None
+            case Snoozed():
+                self._state = Up()
+
+        level = self._state.level if isinstance(self._state, Down) else 0
+        downtime_sec = int((now - self._last_heartbeat).total_seconds())
+        logger.debug(
+            f"Downtime(s): {downtime_sec:<10} Next Alert(s): {alert_threshold_sec(level):<10} {self._state=}"
+        )
+
+        if downtime_sec >= alert_threshold_sec(level):
+            self._state = Down(level + 1)
+            return (
+                f"🪦 No heartbeat for {format_downtime(downtime_sec)}!\n"
+                f"Last received at {self._last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        if downtime_sec < ALERT_SCHEDULE_SEC[0] and isinstance(self._state, Down):
+            self._state = Up()
+        return None
+
+    def _send_alert(self, message: str) -> None:
+        """Send an alert, deleting the previous one so the chat shows a single live status."""
+        if reason := self.muted_reason(self._clock()):
+            logger.debug(f"🌙 Skipping alert ({reason})")
+            return
+
+        with self._lock:
+            previous_id, self._last_message_id = self._last_message_id, None
+        if previous_id is not None:
+            self._notifier.delete(previous_id)
+
+        message_id = self._notifier.send(message)
+        if message_id is not None:
+            with self._lock:
+                self._last_message_id = message_id
+            logger.debug(f"{message}. Telegram alert sent with ID: {message_id}")
 
 
-def _post_telegram(message: str) -> int | None:
-    """Send a Telegram message, returning its message_id (or None on failure)."""
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        response_data = response.json()
-        if response_data.get("ok") and "result" in response_data:
-            return response_data["result"]["message_id"]
-        logger.error(f"Failed to send Telegram message: {response_data}")
-    except Exception as e:
-        logger.error(f"Failed to send Telegram message: {e}")
-    return None
-
-
-def send_telegram_alert(message: str):
-    """Send a watchdog alert, deleting the previous one so the chat shows a single live status.
-
-    Suppressed entirely while alerts are muted (snooze or quiet hours).
-    """
-    global last_message_id
-    if reason := alerts_muted():
-        logger.debug(f"🌙 Skipping alert ({reason})")
-        return
-
-    # Delete the previous alert so only the latest downtime status is visible.
-    with last_message_lock:
-        if last_message_id is not None:
-            delete_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteMessage"
-            payload = {"chat_id": TELEGRAM_CHAT_ID, "message_id": last_message_id}
-            try:
-                response = requests.post(delete_url, json=payload, timeout=10)
-                if response.json().get("ok"):
-                    logger.debug(f"🗑️ Deleted previous message {last_message_id}")
-                else:
-                    logger.warning(f"Failed to delete previous message {last_message_id}: {response.json()}")
-            except Exception as e:
-                logger.error(f"Error deleting previous message {last_message_id}: {e}")
-            last_message_id = None
-
-    message_id = _post_telegram(message)
-    if message_id is not None:
-        with last_message_lock:
-            last_message_id = message_id
-        logger.debug(f"{message}. Telegram alert sent with ID: {message_id}")
+heartbeat_watchdog = Watchdog(TelegramNotifier())
 
 
 @app.route("/", methods=["GET"])
@@ -273,52 +366,16 @@ def metrics_scheduler():
         time.sleep(60)
 
 
-def watchdog():
-    # Schedule in seconds: 1m, 5m, 30m, 60m
-    alert_schedule = [60, 300, 600, 3600]
-    next_alert = alert_schedule[0]
-    is_down = False
-    logger.info(f"Watchdog started with {alert_schedule=}")
-
-    def _get_next_alert(current: int) -> int:
-        # Get next alert time by cycling through schedule
-        if current < alert_schedule[-1]:
-            idx = bisect.bisect_right(alert_schedule, current)
-            return alert_schedule[idx] if idx < len(alert_schedule) else current + 3600
-        return current + 3600
-
+def run_watchdog():
+    logger.info(f"Watchdog started with {ALERT_SCHEDULE_SEC=}")
     while True:
         time.sleep(1)
-        now = datetime.now()
-
-        # While snoozed, hold the backoff at the start so alerting resumes from 1m
-        # (not mid-schedule) once the snooze ends.
-        if snooze_until is not None and now < snooze_until:
-            next_alert = alert_schedule[0]
-            continue
-
-        heartbeat_down_time = now - last_heartbeat
-        downtime_sec = int(heartbeat_down_time.total_seconds())
-        logger.debug(f"Downtime(s): {downtime_sec:<10} Next Alert(s): {next_alert:<10} {is_down=}")
-
-        if downtime_sec >= next_alert:
-            message = (
-                f"🪦 No heartbeat for {format_downtime(downtime_sec)}!\n"
-                f"Last received at {last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-            send_telegram_alert(message)
-            is_down = True
-            next_alert = _get_next_alert(next_alert)
-
-        elif downtime_sec < alert_schedule[0] and is_down:
-            next_alert = alert_schedule[0]
-            is_down = False
+        heartbeat_watchdog.on_tick()
 
 
 @app.route("/heartbeat", methods=["POST"])
 def heartbeat():
-    global last_heartbeat
-    last_heartbeat = datetime.now()
+    heartbeat_watchdog.on_heartbeat()
     try:
         requests.post(f"http://localhost:{DASHBOARD_PORT}/internal/heartbeat", timeout=1)
     except Exception as e:
@@ -329,7 +386,6 @@ def heartbeat():
 @app.route("/snooze", methods=["POST"])
 def snooze():
     """Mute downtime alerts for N minutes (1–1440) or N hours (1–24). Used when the phone is intentionally offline."""
-    global snooze_until
     body = request.get_json(silent=True) or {}
     try:
         minutes = int(body["minutes"]) if "minutes" in body else int(body.get("hours")) * 60
@@ -338,10 +394,7 @@ def snooze():
     if not 1 <= minutes <= 24 * 60:
         return jsonify({"error": "snooze must be between 1 minute and 24 hours"}), 400
 
-    snooze_until = datetime.now() + timedelta(minutes=minutes)
-    duration = f"{minutes // 60}h{minutes % 60:02d}m"
-    logger.info(f"😴 Alerts snoozed for {duration}, until {snooze_until:%Y-%m-%d %H:%M:%S}")
-    _post_telegram(f"😴 Alerts snoozed for {duration}, until {snooze_until:%H:%M}")
+    snooze_until = heartbeat_watchdog.snooze(minutes)
     return jsonify({"status": "ok", "snooze_until": snooze_until.isoformat()}), 200
 
 
@@ -679,7 +732,7 @@ def get_coordinates():
 
 def main():
     configure_logging()
-    threading.Thread(target=watchdog, daemon=True).start()
+    threading.Thread(target=run_watchdog, daemon=True).start()
     threading.Thread(target=metrics_scheduler, daemon=True).start()
     logger.info(f"Running server at http://{get_ip_address()}:{overland_port}")
     app.run(host="0.0.0.0", port=overland_port)
