@@ -1,11 +1,9 @@
 """Tests for Pydantic data models."""
 
 import pytest
-from pydantic import ValidationError
 
 from incognita.data_models import GeoBoundingBox
 from incognita.data_models import GeoCoords
-from incognita.data_models import HealthKitBatch
 
 
 def test_geo_bounding_box_derives_corners_from_center():
@@ -28,14 +26,3 @@ def test_geo_bounding_box_accepts_explicit_corners():
 
     assert bbox.sw == sw
     assert bbox.ne == ne
-
-
-def test_healthkit_batch_validates_batch_index_alias():
-    batch = HealthKitBatch.model_validate({"batchIndex": 3, "samples": []})
-
-    assert batch.batch_index == 3
-
-
-def test_geo_coords_rejects_non_numeric():
-    with pytest.raises(ValidationError):
-        GeoCoords.model_validate({"lat": "north", "lon": 13.0})

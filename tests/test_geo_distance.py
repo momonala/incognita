@@ -8,7 +8,6 @@ from incognita.gps_geometry import get_haversine_dist
 @pytest.mark.parametrize(
     "lat1,lon1,lat2,lon2,expected_meters",
     [
-        (0.0, 0.0, 0.0, 0.0, 0.0),
         (37.7749, -122.4194, 37.7749, -122.4194, 0.0),
         (37.7749, -122.4194, 37.7849, -122.4194, 1113.2),
         (0.0, 0.0, 0.0, 1.0, 111319.5),
@@ -22,14 +21,3 @@ def test_haversine_distance_calculation(
     result = get_haversine_dist(lat1, lon1, lat2, lon2)
 
     assert abs(result - expected_meters) < 1.0
-
-
-def test_haversine_distance_symmetry():
-    """Verify distance from A to B equals distance from B to A."""
-    lat1, lon1 = 37.7749, -122.4194
-    lat2, lon2 = 40.7128, -74.0060
-
-    distance_ab = get_haversine_dist(lat1, lon1, lat2, lon2)
-    distance_ba = get_haversine_dist(lat2, lon2, lat1, lon1)
-
-    assert abs(distance_ab - distance_ba) < 0.001

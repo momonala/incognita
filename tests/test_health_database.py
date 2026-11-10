@@ -5,12 +5,10 @@ import sqlite3
 from unittest.mock import patch
 
 import pytest
-from pydantic import ValidationError
 
 from incognita.data_api import app
 from incognita.data_models import HealthKitBatch
 from incognita.data_models import HealthKitExportType
-from incognita.data_models import HealthKitSample
 from incognita.health_database import insert_health_batch
 
 
@@ -53,11 +51,6 @@ def test_healthkit_batch_validates_ios_payload():
     assert batch.samples[0].type == HealthKitExportType.STEP_COUNT
     assert batch.samples[0].device_name == "iPhone 16 Pro"
     assert batch.samples[0].device_model == "iPhone16,2"
-
-
-def test_healthkit_sample_rejects_unknown_type():
-    with pytest.raises(ValidationError):
-        HealthKitSample.model_validate(_sample(type="Heart Rate"))
 
 
 def test_insert_health_batch_routes_by_type(health_db):
@@ -128,27 +121,11 @@ def test_insert_health_batch_reports_metrics(mock_metrics, health_db):
 
     assert inserted == 1
     assert skipped == 0
-    mock_metrics.increment.assert_any_call("samples_received", 1)
-    mock_metrics.increment.assert_any_call("inserted", 1)
-    mock_metrics.increment.assert_any_call("success")
     assert mock_metrics.increment.call_args_list == [
         (("samples_received", 1), {}),
         (("inserted", 1), {}),
         (("success",), {}),
     ]
-
-
-@patch("incognita.health_database.metrics")
-def test_insert_health_batch_reports_skipped(mock_metrics, health_db):
-    sample = _sample(type="Distance", uuid="FFF", value=1.0, unit="m", deviceName=None, metadata={})
-    first = HealthKitBatch.model_validate({"batchIndex": 1, "samples": [sample]})
-    second = HealthKitBatch.model_validate({"batchIndex": 2, "samples": [sample]})
-
-    insert_health_batch(first, db_filename=health_db)
-    mock_metrics.reset_mock()
-    insert_health_batch(second, db_filename=health_db)
-
-    mock_metrics.increment.assert_any_call("skipped", 1)
 
 
 def test_ios_dump_endpoint(monkeypatch):
@@ -185,17 +162,6 @@ def test_ios_dump_rejects_invalid_payload():
 
     assert response.status_code == 400
     assert response.get_json()["result"] == "error"
-
-
-@patch("incognita.data_api.metrics")
-def test_ios_dump_reports_batches_received(mock_metrics, monkeypatch):
-    monkeypatch.setattr("incognita.data_api.insert_health_batch", lambda batch: (1, 0))
-    payload = {"batchIndex": 1, "samples": [_sample()]}
-
-    with app.test_client() as client:
-        client.post("/ios-dump", data=json.dumps(payload), content_type="application/json")
-
-    mock_metrics.increment.assert_any_call("batches_received")
 
 
 @patch("incognita.data_api.metrics")

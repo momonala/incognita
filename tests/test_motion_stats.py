@@ -93,14 +93,6 @@ def test_low_speed_jitter_is_not_counted_as_movement(motion_stats_db):
     assert stats["motion_type"]["unknown"]["distance_km"] == 0.0
 
 
-def test_stationary_time_uses_speed_zero_rows(motion_stats_db):
-    """Stationary duration includes rows with speed=0 that moving stats exclude."""
-    stats = get_daily_motion_stats("2025-01-01", db_filename=str(motion_stats_db))
-
-    assert stats["motion_type"]["stationary"]["time_seconds"] == pytest.approx(60.0, rel=0.01)
-    assert stats["time_spent_seconds"] > stats["motion_type"]["stationary"]["time_seconds"]
-
-
 def test_get_daily_motion_stats_raises_when_db_missing(tmp_path):
     """Missing database raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError):

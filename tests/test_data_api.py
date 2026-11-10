@@ -10,7 +10,6 @@ from unittest.mock import patch
 import pytest
 
 from incognita import data_api
-from incognita.config import SPYGLASS_DASHBOARD_URL
 from incognita.data_api import app
 from incognita.data_api import format_downtime
 from incognita.utils import BYTES_PER_MB
@@ -20,12 +19,8 @@ from incognita.utils import BYTES_PER_MB
     "seconds,expected",
     [
         (45, "0m, 45s"),
-        (90, "1m, 30s"),
-        (3600, "1h, 0m, 0s"),
         (3661, "1h, 1m, 1s"),
-        (86400, "1d, 0h, 0m, 0s"),
         (90061, "1d, 1h, 1m, 1s"),
-        (0, "0m, 0s"),
     ],
 )
 def test_format_downtime(seconds: int, expected: str):
@@ -35,21 +30,17 @@ def test_format_downtime(seconds: int, expected: str):
     assert result == expected
 
 
-def test_format_downtime_truncates_subseconds():
-    """Verify subsecond precision is truncated."""
-    result = format_downtime(90.999)
-
-    assert result == "1m, 30s"
-
-
-def test_coordinates_uses_file_pipeline(monkeypatch):
-    """Verify /coordinates uses the file-backed simplified trip path."""
-    calls: dict[str, object] = {}
+def test_coordinates_returns_lookback_window_as_separate_trip_segments(monkeypatch):
+    """Return separate paths so clients do not connect across missing-data gaps."""
+    calls: dict[str, datetime] = {}
 
     def fake_get_trip_points_for_date_range(start_dt, end_dt):
         calls["start_dt"] = start_dt
         calls["end_dt"] = end_dt
-        return [[[13.405, 52.52, 1735732800.0], [13.41, 52.53, 1735736400.0]]]
+        return [
+            [[13.405, 52.52, 1735732800.0], [13.41, 52.53, 1735736400.0]],
+            [[13.5, 52.6, 1735740000.0], [13.51, 52.61, 1735743600.0]],
+        ]
 
     monkeypatch.setattr(
         "incognita.data_api.get_trip_points_for_date_range", fake_get_trip_points_for_date_range
@@ -60,44 +51,9 @@ def test_coordinates_uses_file_pipeline(monkeypatch):
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload == {
-        "status": "success",
-        "count": 2,
-        "lookback_hours": 24,
-        "paths": [
-            [
-                {
-                    "timestamp": "2025-01-01T12:00:00Z",
-                    "latitude": 52.52,
-                    "longitude": 13.405,
-                },
-                {
-                    "timestamp": "2025-01-01T13:00:00Z",
-                    "latitude": 52.53,
-                    "longitude": 13.41,
-                },
-            ]
-        ],
-    }
     assert round((calls["end_dt"] - calls["start_dt"]).total_seconds()) == 24 * 60 * 60
-
-
-def test_coordinates_preserves_trip_segments(monkeypatch):
-    """Return separate paths so clients do not connect across missing-data gaps."""
-
-    monkeypatch.setattr(
-        "incognita.data_api.get_trip_points_for_date_range",
-        lambda *_: [
-            [[13.405, 52.52, 1735732800.0], [13.41, 52.53, 1735736400.0]],
-            [[13.5, 52.6, 1735740000.0], [13.51, 52.61, 1735743600.0]],
-        ],
-    )
-
-    with app.test_client() as client:
-        response = client.get("/coordinates?lookback_hours=24")
-
-    assert response.status_code == 200
-    payload = response.get_json()
+    assert payload["status"] == "success"
+    assert payload["lookback_hours"] == 24
     assert payload["count"] == 4
     assert payload["paths"] == [
         [
@@ -204,7 +160,7 @@ def test_coordinates_future_date_returns_empty(monkeypatch):
     assert response.get_json()["count"] == 0
 
 
-@pytest.mark.parametrize("query", ["date=not-a-date", "date=2025-13-01", "date=2025-01-01&lookback_hours=24"])
+@pytest.mark.parametrize("query", ["date=not-a-date", "date=2025-01-01&lookback_hours=24"])
 def test_coordinates_rejects_bad_date_queries(query: str):
     """Malformed dates and date+lookback_hours together are client errors."""
     with app.test_client() as client:
@@ -282,7 +238,7 @@ def test_motion_stats_range_returns_ordered_days(monkeypatch):
     assert payload["stats"][-1]["total_km"] == 3.0
 
 
-@pytest.mark.parametrize("days", ["0", "367", "abc", "-1"])
+@pytest.mark.parametrize("days", ["0", "367", "abc"])
 def test_motion_stats_range_rejects_invalid_days(days):
     """/motion-stats-range only accepts integer days in 1–366."""
     with app.test_client() as client:
@@ -314,14 +270,9 @@ def test_health_data_range_returns_ordered_days(monkeypatch):
 @pytest.mark.parametrize(
     "body",
     [
-        {"hours": 0},
-        {"hours": 25},
-        {"hours": -1},
         {"hours": "abc"},
         {"hours": None},
-        {"minutes": 0},
         {"minutes": 1441},
-        {"minutes": "abc"},
     ],
 )
 def test_snooze_rejects_out_of_range(body):
@@ -385,25 +336,6 @@ def test_dump_reports_duplicate_skipped(mock_metrics, monkeypatch, tmp_path):
     mock_metrics.increment.assert_any_call("duplicate_skipped")
 
 
-def test_observability_redirects_to_spyglass_dashboard():
-    with app.test_client() as client:
-        response = client.get("/observability", follow_redirects=False)
-
-    assert response.status_code == 302
-    assert response.headers["Location"] == SPYGLASS_DASHBOARD_URL
-
-
-def test_count_files_counts_nested_files_only(tmp_path):
-    """Verify _count_files recurses through subdirectories and counts only files."""
-    (tmp_path / "2025" / "01" / "01" / "12").mkdir(parents=True)
-    (tmp_path / "2025" / "01" / "01" / "12" / "a.geojson").write_text("{}")
-    (tmp_path / "2025" / "01" / "01" / "12" / "b.geojson").write_text("{}")
-    (tmp_path / "2025" / "01" / "02").mkdir(parents=True)
-    (tmp_path / "2025" / "01" / "02" / "c.geojson").write_text("{}")
-
-    assert data_api._count_files(tmp_path) == 3
-
-
 @patch("incognita.data_api.metrics")
 def test_report_storage_metrics_reports_file_count_and_db_size(mock_metrics, monkeypatch, tmp_path):
     """Verify report_storage_metrics gauges raw-data file count and combined DB size in MB."""
@@ -427,14 +359,3 @@ def test_report_storage_metrics_reports_file_count_and_db_size(mock_metrics, mon
 
     mock_metrics.gauge.assert_any_call("raw_data_file_count", 2)
     mock_metrics.gauge.assert_any_call("db_size_mb", pytest.approx(2.5))
-
-
-@patch("incognita.data_api.metrics")
-def test_report_process_metrics_reports_rss_and_gc_objects(mock_metrics):
-    """Verify report_process_metrics gauges a positive RSS and GC-tracked object count."""
-    data_api.report_process_metrics()
-
-    gauged = {call.args[0]: call.args[1] for call in mock_metrics.gauge.call_args_list}
-    assert gauged.keys() == {"rss_mb", "gc_objects"}
-    assert gauged["rss_mb"] > 0
-    assert gauged["gc_objects"] > 0

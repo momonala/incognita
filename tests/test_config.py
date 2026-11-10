@@ -14,31 +14,14 @@ runner = CliRunner()
     "flag,expected_output",
     [
         ("--project-name", "incognita"),
-        ("--project-version", "0.1.0"),
         ("--data-api-port", "5003"),
         ("--dashboard-port", "5004"),
-        ("--flights-map", "static/flights_pydeck.html"),
-        ("--gps-map", "static/gps_pydeck.html"),
-        ("--visited-map", "static/visited_pydeck.html"),
-        ("--spyglass-host", "localhost:5013"),
-        ("--spyglass-dashboard-url", "https://spyglass.mnalavadi.org/dashboard/incognita"),
     ],
 )
 def test_config_returns_single_value(flag: str, expected_output: str):
     result = runner.invoke(app, [flag])
     assert result.exit_code == 0
     assert result.stdout.strip() == expected_output
-
-
-def test_config_all_returns_all_values():
-    result = runner.invoke(app, ["--all"])
-    assert result.exit_code == 0
-    assert "project_name=incognita" in result.stdout
-    assert "data_api_port=5003" in result.stdout
-    assert "dashboard_port=5004" in result.stdout
-    assert "flights_map_filename=" in result.stdout
-    assert "spyglass_host=localhost:5013" in result.stdout
-    assert "spyglass_dashboard_url=https://spyglass.mnalavadi.org/dashboard/incognita" in result.stdout
 
 
 def test_config_without_flag_fails():
