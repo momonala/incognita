@@ -177,7 +177,7 @@ def test_snooze_start_announces_and_enters_snoozed(watchdog, clock, notifier):
     clock.at(10)
     until = watchdog.snooze(95)
     assert until == NOON + timedelta(seconds=10, minutes=95)
-    assert watchdog.state == Snoozed(until)
+    assert watchdog.state == Snoozed(until, 0)
     assert notifier.sent == ["😴 Alerts snoozed for 1h35m, until 13:35"]
     assert notifier.deleted == []
 
@@ -188,7 +188,7 @@ def test_snooze_suppresses_alerts_until_boundary(watchdog, clock, notifier):
 
     tick_at(watchdog, clock, 3599)
     assert notifier.sent == []
-    assert watchdog.state == Snoozed(NOON + timedelta(hours=1))
+    assert watchdog.state == Snoozed(NOON + timedelta(hours=1), 0)
 
     tick_at(watchdog, clock, 3600)
     assert notifier.sent == ["🪦 No heartbeat for 1h, 0m, 0s!\nLast received at 2025-01-01 12:00:00"]
@@ -199,8 +199,9 @@ def test_snooze_during_down_restarts_escalation_at_first_level(watchdog, clock, 
     drive_to_level(watchdog, clock, 3)
     clock.at(700)
     watchdog.snooze(10)
+    assert watchdog.state == Snoozed(NOON + timedelta(seconds=1300), 3)
     tick_at(watchdog, clock, 701)
-    assert watchdog.state == Snoozed(NOON + timedelta(seconds=1300))
+    assert watchdog.state == Snoozed(NOON + timedelta(seconds=1300), 0)
 
     sent_before = len(notifier.sent)
     tick_at(watchdog, clock, 1300)
@@ -218,6 +219,7 @@ def test_snooze_message_does_not_replace_the_live_alert(watchdog, clock, notifie
     tick_at(watchdog, clock, 60)
     clock.at(61)
     watchdog.snooze(1)
+    tick_at(watchdog, clock, 62)
     tick_at(watchdog, clock, 121)
     assert notifier.deleted == [101]
 
@@ -229,7 +231,7 @@ def test_heartbeat_during_snooze_keeps_snooze(watchdog, clock, notifier):
     watchdog.on_heartbeat()
 
     tick_at(watchdog, clock, 1801)
-    assert watchdog.state == Snoozed(NOON + timedelta(hours=1))
+    assert watchdog.state == Snoozed(NOON + timedelta(hours=1), 0)
     assert watchdog.muted_reason(clock()) == "snoozed until 13:00"
 
     tick_at(watchdog, clock, 3599)
@@ -243,7 +245,34 @@ def test_resnooze_replaces_window(watchdog, clock):
     watchdog.snooze(120)
     clock.at(60)
     watchdog.snooze(1)
-    assert watchdog.state == Snoozed(NOON + timedelta(minutes=2))
+    assert watchdog.state == Snoozed(NOON + timedelta(minutes=2), 0)
+
+
+def test_snooze_with_no_tick_inside_window_keeps_escalation_level(watchdog, clock, notifier):
+    drive_to_level(watchdog, clock, 3)
+    clock.at(700)
+    watchdog.snooze(1)
+    sent_before = len(notifier.sent)
+
+    for seconds in (770, 771, 772, 3599):
+        tick_at(watchdog, clock, seconds)
+        assert watchdog.state == Down(3)
+    assert len(notifier.sent) == sent_before
+
+    tick_at(watchdog, clock, 3600)
+    assert notifier.sent[sent_before:] == [
+        "🪦 No heartbeat for 1h, 0m, 0s!\nLast received at 2025-01-01 12:00:00"
+    ]
+    assert watchdog.state == Down(4)
+
+
+def test_resnooze_before_any_tick_keeps_escalation_level(watchdog, clock):
+    drive_to_level(watchdog, clock, 2)
+    clock.at(400)
+    watchdog.snooze(1)
+    clock.at(401)
+    watchdog.snooze(1)
+    assert watchdog.state == Snoozed(NOON + timedelta(seconds=461), 2)
 
 
 def test_muted_reason(watchdog, clock):
@@ -327,7 +356,7 @@ def test_snooze_endpoint(app_watchdog, notifier, body, until, announcement):
 
     assert response.status_code == 200
     assert response.get_json() == {"status": "ok", "snooze_until": until.isoformat()}
-    assert app_watchdog.state == Snoozed(until)
+    assert app_watchdog.state == Snoozed(until, 0)
     assert notifier.sent == [announcement]
 
 

@@ -148,7 +148,7 @@ flowchart LR
 | `/status` | GET | Server status |
 | `/dump` | POST | Receive GeoJSON location data from Overland app |
 | `/heartbeat` | POST | Heartbeat endpoint for monitoring; forwards to web app |
-| `/snooze` | POST | Mute downtime alerts for `{"hours": 1–24}` (phone intentionally offline) |
+| `/snooze` | POST | Mute downtime alerts for `{"minutes": 1–1440}` or `{"hours": 1–24}` (phone intentionally offline); `minutes` wins if both are sent |
 | `/ios-dump` | POST | Receive HealthKit sample batches from the iOS export app |
 | `/health-data` | GET | Daily HealthKit summary (steps, distance, energy, flights climbed) |
 | `/motion-stats` | GET | Daily GPS motion summary from SQLite (distance, speed, altitude, by motion type) |
@@ -362,9 +362,9 @@ Data API server includes two background threads:
 | Schedule | Task |
 |----------|------|
 | Continuous | Monitor heartbeat endpoint (watchdog) |
-| Escalating | Send Telegram alerts if no heartbeat (1m, 5m, 30m, 60m) |
+| Escalating | Send Telegram alerts if no heartbeat (1m, 5m, 10m, 60m, then every further hour) |
 | Recovery | Reset backoff to 1m when the heartbeat returns (no message sent) |
-| Muting | Suppress alerts during quiet hours (11pm–7am) or an active `/snooze` window |
+| Muting | Suppress alerts during quiet hours (0:00–6:59) or an active `/snooze` window |
 | Hourly | Report raw-data file count, total DB size, process RSS and GC object count to spyglass (`metrics_scheduler`, via the `schedule` library) |
 
 ## Observability

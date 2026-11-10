@@ -125,7 +125,7 @@ class TelegramNotifier:
         try:
             response = requests.post(delete_url, json=payload, timeout=10)
             if response.json().get("ok"):
-                logger.debug(f"🗑️ Deleted previous message {message_id}")
+                logger.debug(f"Deleted previous message {message_id}")
             else:
                 logger.warning(f"Failed to delete previous message {message_id}: {response.json()}")
         except Exception as e:
@@ -145,6 +145,7 @@ class Down:
 @dataclass(frozen=True)
 class Snoozed:
     until: datetime
+    level: int
 
 
 WatchdogState = Up | Down | Snoozed
@@ -160,9 +161,10 @@ def alert_threshold_sec(level: int) -> int:
 class Watchdog:
     """Heartbeat watchdog: escalating downtime alerts, snoozable, one live alert message in the chat.
 
-    `level` in Down is the number of alerts raised since the last recovery; the next one fires at
+    `level` is the number of alerts raised since the last recovery; the next one fires at
     `alert_threshold_sec(level)`. Recovery happens on the first tick that sees the heartbeat
-    younger than the first threshold.
+    younger than the first threshold. A snooze keeps the level until the first tick inside the
+    snooze window, which drops it to 0.
     """
 
     def __init__(self, notifier: Notifier, clock: Callable[[], datetime] = datetime.now):
@@ -184,7 +186,7 @@ class Watchdog:
             return self._last_heartbeat
 
     def muted_reason(self, now: datetime) -> str | None:
-        """Why alerts are suppressed at `now` (active snooze or 11pm–7am quiet hours), else None."""
+        """Why alerts are suppressed at `now` (active snooze or quiet hours, 0:00–6:59), else None."""
         with self._lock:
             state = self._state
         if isinstance(state, Snoozed) and now < state.until:
@@ -200,9 +202,9 @@ class Watchdog:
     def snooze(self, minutes: int) -> datetime:
         with self._lock:
             until = self._clock() + timedelta(minutes=minutes)
-            self._state = Snoozed(until)
+            self._state = Snoozed(until, self._state.level if isinstance(self._state, Down | Snoozed) else 0)
         duration = f"{minutes // 60}h{minutes % 60:02d}m"
-        logger.info(f"😴 Alerts snoozed for {duration}, until {until:%Y-%m-%d %H:%M:%S}")
+        logger.info(f"Alerts snoozed for {duration}, until {until:%Y-%m-%d %H:%M:%S}")
         self._notifier.send(f"😴 Alerts snoozed for {duration}, until {until:%H:%M}")
         return until
 
@@ -216,7 +218,10 @@ class Watchdog:
     def _advance(self, now: datetime) -> str | None:
         match self._state:
             case Snoozed(until) if now < until:
+                self._state = Snoozed(until, 0)
                 return None
+            case Snoozed(level=level) if level > 0:
+                self._state = Down(level)
             case Snoozed():
                 self._state = Up()
 
@@ -239,7 +244,7 @@ class Watchdog:
     def _send_alert(self, message: str) -> None:
         """Send an alert, deleting the previous one so the chat shows a single live status."""
         if reason := self.muted_reason(self._clock()):
-            logger.debug(f"🌙 Skipping alert ({reason})")
+            logger.debug(f"Skipping alert ({reason})")
             return
 
         with self._lock:
