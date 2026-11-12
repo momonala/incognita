@@ -93,4 +93,5 @@ static/*.html
 .ipython/
 .cursor/
 data/
+incognita_raw_data/
 .claude/

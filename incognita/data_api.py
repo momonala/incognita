@@ -54,7 +54,6 @@ from incognita.motion_stats import get_motion_stats_range
 from incognita.observability import configure_logging
 from incognita.observability import metrics
 from incognita.utils import BYTES_PER_MB
-from incognita.utils import get_ip_address
 
 logger = logging.getLogger(__name__)
 
@@ -760,8 +759,8 @@ def main():
     configure_logging()
     threading.Thread(target=run_watchdog, daemon=True).start()
     threading.Thread(target=metrics_scheduler, daemon=True).start()
-    logger.info(f"Running server at http://{get_ip_address()}:{overland_port}")
-    app.run(host="0.0.0.0", port=overland_port)
+    logger.info(f"Running server at http://127.0.0.1:{overland_port}")
+    app.run(host="127.0.0.1", port=overland_port)
 
 
 if __name__ == "__main__":

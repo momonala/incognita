@@ -529,7 +529,7 @@ def passport():
 def main():
     configure_logging()
     logger.info(f"http://localhost:{DASHBOARD_PORT}")
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=False)
+    app.run(host="127.0.0.1", port=DASHBOARD_PORT, debug=False)
 
 
 if __name__ == "__main__":

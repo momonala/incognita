@@ -1,5 +1,3 @@
-import socket
-
 import pandas as pd
 
 from incognita.data_models import GeoBoundingBox
@@ -11,15 +9,6 @@ BYTES_PER_MB = 1024 * 1024
 BERLIN_LAT = 52.52
 BERLIN_LON = 13.405
 DEFAULT_MAP_BOX = GeoBoundingBox(center=GeoCoords(lat=BERLIN_LAT, lon=BERLIN_LON), width=0.065, name="Berlin")
-
-
-def get_ip_address() -> str:
-    """Get the IP address of the current server."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 100))
-    socket_name = s.getsockname()
-    s.close()
-    return socket_name[0]
 
 
 GOOGLE_SHEETS_DOCUMENT_ID = "1V4hVhSH1_tHizwqlSQ2ymysQwwQMuFENfE9lB5vJPQY"
