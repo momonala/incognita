@@ -29,6 +29,7 @@ from flask import request
 from pydantic import ValidationError
 
 from incognita.config import DASHBOARD_PORT
+from incognita.config import DATA_API_PORT
 from incognita.config import SPYGLASS_DASHBOARD_URL
 from incognita.data_models import DailyMotionStats
 from incognita.data_models import HealthDump
@@ -58,8 +59,6 @@ from incognita.utils import BYTES_PER_MB
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-
-overland_port = 5003
 
 DEFAULT_LOOKBACK_HOURS = 24
 MAX_STATS_LOOKBACK_DAYS = 366
@@ -759,8 +758,8 @@ def main():
     configure_logging()
     threading.Thread(target=run_watchdog, daemon=True).start()
     threading.Thread(target=metrics_scheduler, daemon=True).start()
-    logger.info(f"Running server at http://127.0.0.1:{overland_port}")
-    app.run(host="127.0.0.1", port=overland_port)
+    logger.info(f"Running server at http://127.0.0.1:{DATA_API_PORT}")
+    app.run(host="127.0.0.1", port=DATA_API_PORT)
 
 
 if __name__ == "__main__":
