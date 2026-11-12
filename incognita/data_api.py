@@ -2,6 +2,7 @@
 
 import gc
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -42,6 +43,7 @@ from incognita.database import update_db
 from incognita.database import write_geojson_file
 from incognita.env import TELEGRAM_CHAT_ID
 from incognita.env import TELEGRAM_TOKEN
+from incognita.env import TRACE_API_TOKEN
 from incognita.gps_trips_renderer import get_trip_points_for_date_range
 from incognita.health_database import HEALTH_DB_FILE
 from incognita.health_database import get_daily_health_dump
@@ -282,6 +284,23 @@ def observability():
 def _spyglass_request_start():
     """Record request start time for API latency metrics."""
     request.environ["_spyglass_start"] = time.perf_counter()
+
+
+PUBLIC_ENDPOINTS = {"root", "status", "observability"}
+
+
+@app.before_request
+def _require_api_token():
+    """Reject every request except the public health checks unless it carries the Trace API token."""
+    if request.endpoint in PUBLIC_ENDPOINTS:
+        return None
+    supplied = request.headers.get("Authorization", "")
+    if not TRACE_API_TOKEN or not hmac.compare_digest(
+        supplied.encode(), f"Bearer {TRACE_API_TOKEN}".encode()
+    ):
+        metrics.increment("unauthorized")
+        return jsonify({"status": "error", "message": "unauthorized"}), 401
+    return None
 
 
 _TRACKED_ENDPOINTS = {"dump", "ios_dump"}
@@ -736,6 +755,8 @@ def get_coordinates():
 
 
 def main():
+    if not TRACE_API_TOKEN:
+        raise SystemExit("TRACE_API_TOKEN is not set in .env; refusing to serve location data without auth")
     configure_logging()
     threading.Thread(target=run_watchdog, daemon=True).start()
     threading.Thread(target=metrics_scheduler, daemon=True).start()

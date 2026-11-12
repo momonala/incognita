@@ -55,6 +55,10 @@ Server runs on port 5003. Configure Overland app to POST to:
 - `http://your-server-ip:5003/dump` - Receive location data
 - `http://your-server-ip:5003/heartbeat` - Heartbeat endpoint
 
+Set `TRACE_API_TOKEN` in `.env` (the server refuses to start without it; see [API Endpoints](#api-endpoints)).
+Generate one with `python3 -c 'import secrets; print(secrets.token_urlsafe(32))'` and paste the same value
+into the Trace app's Settings.
+
 ### Web Dashboard
 
 Main Flask application for viewing data:
@@ -141,6 +145,8 @@ flowchart LR
 ## API Endpoints
 
 ### Data API Server (`:5003`)
+
+All endpoints except `/`, `/status` and `/observability` need the `Authorization: Bearer <TRACE_API_TOKEN>` header.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -377,6 +383,7 @@ Both Flask servers report metrics to [spyglass](https://github.com/momonala/spyg
 | `update_db.success` / `update_db.error` (tagged `kind`) | `database.update_db` | GPS ingest-to-SQLite success rate, both live `/dump` writes and bulk `refresh-db` runs |
 | `dump.files_received`, `dump.locations_count`, `dump.wrote_file`, `dump.duplicate_skipped` | `data_api.dump` | Count of GeoJSON files received from Overland and whether each was new or a duplicate |
 | `ios_dump.batches_received`, `ios_dump.validation_error` | `data_api.ios_dump` | Count of HealthKit batches received and schema-validation failures |
+| `_require_api_token.unauthorized` | `data_api._require_api_token` | Requests to `:5003` rejected for a missing or wrong `TRACE_API_TOKEN`; a steady count means someone is probing the public endpoint |
 | `insert_health_batch.samples_received`, `.inserted`, `.skipped`, `.success` / `.error` | `health_database.insert_health_batch` | HealthKit sample ingest-to-SQLite success rate |
 | `api.<endpoint>.latency_ms` | both apps' `before_request`/`after_request` hooks | Per-route request latency |
 | `report_storage_metrics.raw_data_file_count`, `.db_size_mb` | `data_api.report_storage_metrics` | File count under `incognita_raw_data/` and combined size (MB) of `geo_data.db` + `health_data.db` (with WAL/SHM sidecars); reported hourly |

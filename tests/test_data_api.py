@@ -8,11 +8,36 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from flask.testing import FlaskClient
 
 from incognita import data_api
 from incognita.data_api import app
 from incognita.data_api import format_downtime
 from incognita.utils import BYTES_PER_MB
+
+
+def test_private_endpoints_reject_missing_or_wrong_token():
+    token = data_api.TRACE_API_TOKEN
+    for headers in (
+        {},
+        {"Authorization": "Bearer wrong-token"},
+        {"Authorization": token},
+        {"Authorization": f"Bearer {token}x"},
+    ):
+        with FlaskClient(app) as client:
+            assert client.get("/coordinates?date=2025-01-01", headers=headers).status_code == 401
+
+
+def test_empty_server_token_rejects_empty_bearer(monkeypatch):
+    monkeypatch.setattr(data_api, "TRACE_API_TOKEN", "")
+    with FlaskClient(app) as client:
+        assert client.get("/health-data", headers={"Authorization": "Bearer "}).status_code == 401
+
+
+@pytest.mark.parametrize(("path", "status"), [("/", 200), ("/status", 200), ("/observability", 302)])
+def test_public_routes_need_no_token(path: str, status: int):
+    with FlaskClient(app) as client:
+        assert client.get(path).status_code == status
 
 
 @pytest.mark.parametrize(
